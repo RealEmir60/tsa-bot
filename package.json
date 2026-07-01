@@ -1,16 +1,14 @@
 {
-  "name": "tsa-karargah-bot",
+  "name": "tsa-karargah-botu",
   "version": "1.0.0",
-  "description": "TSA Karargah Yonetim Sistemi",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "noblox.js": "latest"
+    "@discordjs/voice": "^0.17.0",
+    "libsodium-wrappers": "^0.7.15",
+    "noblox.js": "^5.10.1"
   }
 }
