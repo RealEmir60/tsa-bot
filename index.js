@@ -100,7 +100,6 @@ async function robloxGiris() {
         const botKullanici = await noblox.getAuthenticatedUser();
         console.log(`[Roblox] Başarılı: ${botKullanici.UserName} olarak giriş yapıldı.`);
         
-        // Rütbeleri çekip GRUP_RUTBELERI listesini tamamiyle güncelliyoruz
         const roller = await noblox.getRoles(AYARLAR.GROUP_ID);
         const geciciListe = roller.filter(r => r.rank !== 0).map(r => ({
             name: `${r.name} (ID: ${r.rank})`,
@@ -155,6 +154,10 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
 
 client.once('ready', async () => {
     console.log(`[Discord] Bot aktif: ${client.user.tag}`);
+    
+    // BOTA OYNUYOR DURUMU EKLEME KODU
+    client.user.setActivity('TSA | Turkish Special Army', { type: 0 });
+
     await robloxGiris();
 
     if (!AYARLAR.DISCORD_TOKEN) return;
@@ -168,22 +171,17 @@ client.once('ready', async () => {
     }
 });
 
-// CANLI OTO-TAMAMLAMA YÖNETİCİSİ
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'rütbe-değiştir') {
             try {
                 const focusedValue = interaction.options.focused().toLowerCase();
-                
-                // Hafızadaki rütbeleri filtrelenmiş olarak getir
                 let filtrelenmis = GRUP_RUTBELERI.filter(choice => 
                     choice.name.toLowerCase().includes(focusedValue)
                 );
-                
-                // Discord 25'ten fazla seçenekte hata verir, üst sınırı koruyoruz
                 await interaction.respond(filtrelenmis.slice(0, 25));
             } catch (err) {
-                console.error("[Autocomplete Hatası] Seçenekler zamanında iletilemedi:", err.message);
+                console.error("[Autocomplete Hatası]", err.message);
             }
         }
         return;
