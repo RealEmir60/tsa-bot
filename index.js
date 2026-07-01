@@ -87,8 +87,6 @@ const TUM_RUTBELER = [
     { name: 'TSA', value: 255 }
 ];
 
-const ILK_25_RUTBE = TUM_RUTBELER.slice(0, 25);
-
 // --- RENDER HTTP SUNUCUSU ---
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -117,122 +115,25 @@ const commands = [
             { name: 'sebep', description: 'Gerekçe', type: ApplicationCommandOptionType.String, required: true }
         ]
     },
-    { 
-        name: 'terfi', 
-        description: 'Personeli +1 rütbe yükseltir.', 
-        options: [
-            { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }, 
-            { name: 'sebep', description: 'Terfi sebebi', type: ApplicationCommandOptionType.String, required: true }
-        ] 
-    },
-    { 
-        name: 'tenzil', 
-        description: 'Personeli -1 rütbe düşürür.', 
-        options: [
-            { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }, 
-            { name: 'sebep', description: 'Tenzil sebebi', type: ApplicationCommandOptionType.String, required: true }
-        ] 
-    },
-    { 
-        name: 'profile', 
-        description: 'Personel künye bilgisi.', 
-        options: [
-            { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }
-        ] 
-    },
-    { 
-        name: 'grup-listele', 
-        description: 'Kullanıcının üye olduğu gruplar.', 
-        options: [
-            { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }
-        ] 
-    },
+    { name: 'terfi', description: 'Personeli +1 rütbe yükseltir.', options: [{ name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }, { name: 'sebep', description: 'Terfi sebebi', type: ApplicationCommandOptionType.String, required: true }] },
+    { name: 'tenzil', description: 'Personeli -1 rütbe düşürür.', options: [{ name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }, { name: 'sebep', description: 'Tenzil sebebi', type: ApplicationCommandOptionType.String, required: true }] },
+    { name: 'profile', description: 'Personel künye bilgisi.', options: [{ name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }] },
+    { name: 'grup-listele', description: 'Kullanıcının üye olduğu gruplar.', options: [{ name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }] },
     { name: 'aktiflik-sorgu', description: 'Oyundaki anlık personel sayısı.' },
-    { 
-        name: 'yasakla', 
-        description: 'Üyeyi sunucudan yasaklar.', 
-        options: [
-            { name: 'kullanıcı', description: 'Yasaklanacak kullanıcı', type: ApplicationCommandOptionType.User, required: true }, 
-            { name: 'sebep', description: 'Yasaklanma sebebi', type: ApplicationCommandOptionType.String, required: true }
-        ] 
-    },
-    { 
-        name: 'temizle', 
-        description: 'Mesajları temizler.', 
-        options: [
-            { name: 'adet', description: 'Silinecek mesaj sayısı', type: ApplicationCommandOptionType.Integer, required: true }
-        ] 
-    },
+    { name: 'yasakla', description: 'Üyeyi sunucudan yasaklar.', options: [{ name: 'kullanıcı', description: 'Yasaklanacak kullanıcı', type: ApplicationCommandOptionType.User, required: true }, { name: 'sebep', description: 'Yasaklanma sebebi', type: ApplicationCommandOptionType.String, required: true }] },
+    { name: 'temizle', description: 'Mesajları temizler.', options: [{ name: 'adet', description: 'Silinecek mesaj sayısı', type: ApplicationCommandOptionType.Integer, required: true }] },
     { name: 'ses-katıl', description: 'Botu ses kanalına çağırır.' },
     { name: 'ses-ayrıl', description: 'Botu ses kanalından çıkarır.' },
-    { 
-        name: 'branş-istek', 
-        description: 'Branş başvurusu yapar.', 
-        options: [
-            { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }, 
-            { name: 'branş', description: 'Talep edilen branş', type: ApplicationCommandOptionType.String, required: true, choices: Object.keys(BRANSLAR).map(b => ({ name: b, value: b })) }, 
-            { name: 'sebep', description: 'Başvuru sebebi', type: ApplicationCommandOptionType.String, required: true }
-        ] 
-    },
-    { 
-        name: 'branş-at', 
-        description: 'Personeli branşa atar.', 
-        options: [
-            { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }, 
-            { name: 'branş', description: 'Atanacak branş', type: ApplicationCommandOptionType.String, required: true, choices: Object.keys(BRANSLAR).map(b => ({ name: b, value: b })) }, 
-            { name: 'rütbe', description: 'Atanacak rütbe', type: ApplicationCommandOptionType.Integer, required: true, autocomplete: true }, 
-            { name: 'sebep', description: 'Atama sebebi', type: ApplicationCommandOptionType.String, required: true }
-        ] 
-    },
-    { 
-        name: 'duyuru', 
-        description: 'Kurumsal duyuru yayınlar.', 
-        options: [
-            { name: 'kanal', description: 'Duyuru kanalı', type: ApplicationCommandOptionType.Channel, required: true }, 
-            { name: 'içerik', description: 'Duyuru içeriği', type: ApplicationCommandOptionType.String, required: true }
-        ] 
-    },
+    { name: 'branş-istek', description: 'Branş başvurusu yapar.', options: [{ name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }, { name: 'branş', description: 'Talep edilen branş', type: ApplicationCommandOptionType.String, required: true, choices: Object.keys(BRANSLAR).map(b => ({ name: b, value: b })) }, { name: 'sebep', description: 'Başvuru sebebi', type: ApplicationCommandOptionType.String, required: true }] },
+    { name: 'branş-at', description: 'Personeli branşa atar.', options: [{ name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }, { name: 'branş', description: 'Atanacak branş', type: ApplicationCommandOptionType.String, required: true, choices: Object.keys(BRANSLAR).map(b => ({ name: b, value: b })) }, { name: 'rütbe', description: 'Atanacak rütbe', type: ApplicationCommandOptionType.Integer, required: true, autocomplete: true }, { name: 'sebep', description: 'Atama sebebi', type: ApplicationCommandOptionType.String, required: true }] },
+    { name: 'duyuru', description: 'Kurumsal duyuru yayınlar.', options: [{ name: 'kanal', description: 'Duyuru kanalı', type: ApplicationCommandOptionType.Channel, required: true }, { name: 'içerik', description: 'Duyuru içeriği', type: ApplicationCommandOptionType.String, required: true }] },
     { name: 'karargah-durum', description: 'Grup genel durumu.' },
-    { 
-        name: 'sorgula', 
-        description: 'Rütbe geçmişini sorgular.', 
-        options: [
-            { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }
-        ] 
-    },
-    { 
-        name: 'toplu-rütbe', 
-        description: 'Çoklu rütbe ataması.', 
-        options: [
-            { name: 'kullanicilar', description: 'Virgülle ayır: user1,user2', type: ApplicationCommandOptionType.String, required: true }, 
-            { name: 'rütbe', description: 'Atanacak rütbe', type: ApplicationCommandOptionType.Integer, required: true, autocomplete: true }, 
-            { name: 'sebep', description: 'Atama sebebi', type: ApplicationCommandOptionType.String, required: true }
-        ] 
-    },
+    { name: 'sorgula', description: 'Rütbe geçmişini sorgular.', options: [{ name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }] },
+    { name: 'toplu-rütbe', description: 'Çoklu rütbe ataması.', options: [{ name: 'kullanicilar', description: 'Virgülle ayır: user1,user2', type: ApplicationCommandOptionType.String, required: true }, { name: 'rütbe', description: 'Atanacak rütbe', type: ApplicationCommandOptionType.Integer, required: true, autocomplete: true }, { name: 'sebep', description: 'Atama sebebi', type: ApplicationCommandOptionType.String, required: true }] },
     { name: 'yoklama', description: 'Ses kanalındakileri listeler.' },
-    { 
-        name: 'ceza', 
-        description: 'Disiplin cezası uygular.', 
-        options: [
-            { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }, 
-            { name: 'sebep', description: 'Ceza sebebi', type: ApplicationCommandOptionType.String, required: true }
-        ] 
-    },
-    { 
-        name: 'nöbet', 
-        description: 'Nöbet listesi ve rotasyonu.', 
-        options: [
-            { name: 'kişiler', description: 'user1,user2', type: ApplicationCommandOptionType.String, required: true }, 
-            { name: 'süre', description: 'Nöbet süresi (dakika)', type: ApplicationCommandOptionType.Integer, required: true }
-        ] 
-    },
-    { 
-        name: 'aktiflik-duyuru', 
-        description: 'Operasyon çağrısı yapar.', 
-        options: [
-            { name: 'kanal', description: 'Duyuru kanalı', type: ApplicationCommandOptionType.Channel, required: false }
-        ] 
-    }
+    { name: 'ceza', description: 'Disiplin cezası uygular.', options: [{ name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }, { name: 'sebep', description: 'Ceza sebebi', type: ApplicationCommandOptionType.String, required: true }] },
+    { name: 'nöbet', description: 'Nöbet listesi ve rotasyonu.', options: [{ name: 'kişiler', description: 'user1,user2', type: ApplicationCommandOptionType.String, required: true }, { name: 'süre', description: 'Nöbet süresi (dakika)', type: ApplicationCommandOptionType.Integer, required: true }] },
+    { name: 'aktiflik-duyuru', description: 'Operasyon çağrısı yapar.', options: [{ name: 'kanal', description: 'Duyuru kanalı', type: ApplicationCommandOptionType.Channel, required: false }] }
 ];
 
 // --- YARDIMCI FONKSİYONLAR ---
@@ -245,6 +146,16 @@ async function robloxGiris() {
         console.error("[Roblox] HATA:", err.message);
     }
 }
+
+// --- KEEP-ALIVE (CANLI TUTMA) SİSTEMİ ---
+setInterval(async () => {
+    try {
+        const user = await noblox.getCurrentUser();
+        console.log(`[Sistem] Oturum aktif: ${user.UserName} (Tazelendi)`);
+    } catch (err) {
+        console.error("[Sistem] Oturum tazeleme hatası. Çerez ölmüş olabilir.");
+    }
+}, 5 * 60 * 1000); // Her 5 dakikada bir
 
 async function logGonder(interaction, username, userId, eskiRutbe, yeniRutbe, sebep) {
     try {
@@ -285,7 +196,6 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async (interaction) => {
     try {
-        // Autocomplete
         if (interaction.isAutocomplete()) {
             const focused = interaction.options.getFocused().toLowerCase();
             const filtered = TUM_RUTBELER.filter(r => r.name.toLowerCase().includes(focused)).slice(0, 25);
@@ -293,7 +203,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // Button Interactions (Branş)
         if (interaction.isButton()) {
             if (!interaction.member.roles.cache.has(AYARLAR.BRANS_YETKILI_ROL_ID) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: '❌ Yetkiniz yetersiz.', ephemeral: true });
@@ -310,7 +219,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // Modal Submit
         if (interaction.isModalSubmit()) {
             if (interaction.customId.startsWith('br_modal_')) {
                 await interaction.deferReply({ ephemeral: true });
@@ -318,7 +226,6 @@ client.on('interactionCreate', async (interaction) => {
                 const rid = parseInt(interaction.fields.getTextInputValue('rid'));
                 try {
                     const groupId = BRANSLAR[brans];
-                    // Diğer branşlardan çıkar
                     for (const gId of Object.values(BRANSLAR)) {
                         try { if (await noblox.getRankInGroup(gId, uId) > 0) await noblox.setRank(gId, uId, 0); } catch(e){}
                     }
@@ -332,11 +239,9 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
 
-        // Slash Commands
         if (!interaction.isChatInputCommand()) return;
         const { commandName, options, member, guild } = interaction;
 
-        // Yetki Kontrolü
         const yetkiliKomutlar = ['rütbe-değiştir', 'terfi', 'tenzil', 'yasakla', 'branş-at', 'toplu-rütbe', 'duyuru', 'ceza', 'nöbet', 'aktiflik-duyuru', 'temizle', 'ses-katıl', 'ses-ayrıl'];
         if (yetkiliKomutlar.includes(commandName)) {
             if (!member.roles.cache.has(AYARLAR.YETKILI_ROL_ID) && !member.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -346,7 +251,6 @@ client.on('interactionCreate', async (interaction) => {
 
         await interaction.deferReply().catch(() => {});
 
-        // Komut Mantıkları
         if (commandName === 'ping') {
             await interaction.editReply(`🏓 Gecikme: **${client.ws.ping}ms**`);
         } 
