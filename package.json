@@ -1,16 +1,19 @@
 {
   "name": "tsa-bot",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "TSA Turkish Special Army Discord Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "discord.js": "^14.14.0",
-    "noblox.js": "^5.0.0",
-    "@discordjs/voice": "^0.16.1",
-    "@discordjs/opus": "^0.9.0",
-    "libsodium-wrappers": "^0.7.13",
-    "node-fetch": "^2.7.0"
+    "@discordjs/voice": "^0.17.0",
+    "axios": "^1.8.2",
+    "discord.js": "^14.21.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
   }
 }
