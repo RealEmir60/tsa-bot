@@ -1,19 +1,14 @@
 {
-  "name": "tsa-karargah-bot",
+  "name": "tsa-bot",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
-  "engines": {
-    "node": "18.x"
-  },
   "dependencies": {
     "discord.js": "^14.21.0",
     "@discordjs/voice": "^0.18.0",
     "@discordjs/opus": "^0.9.0",
     "libsodium-wrappers": "^0.7.15",
     "node-fetch": "^2.7.0",
-    "noblox.js": "4.13.0"
+    "noblox.js": "4.11.0",
+    "undici": "^5.28.3"
   }
 }
