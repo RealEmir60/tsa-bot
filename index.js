@@ -14,7 +14,7 @@ try {
 }
 // =========================================================================================
 
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const noblox = require('noblox.js');
 const http = require('http');
@@ -25,7 +25,7 @@ const AYARLAR = {
     GROUP_ID: parseInt(process.env.GROUP_ID) || 972348115, 
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID || "1519328796275380325", 
     YETKILI_ROL_ID: process.env.YETKILI_ROL_ID || "1518357646971764859", 
-    OYUN_ID: process.env.OYUN_ID || "138257110169831" // .env dosyasından çekilen dinamik değer
+    OYUN_ID: process.env.OYUN_ID || "138257110169831" 
 };
 
 // ==================== 🪖 TÜM RÜTBELERİN TAM LİSTESİ ====================
@@ -160,7 +160,6 @@ async function robloxGiris() {
     }
 }
 
-// ==================== 🛠️ GÖRSEL LOG MOTORU (Screenshot_11.png MAKETİ) ====================
 async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, yeniRutbe, sebep) {
     try {
         let avatarUrl = "https://www.roblox.com/images/ThumbnailHolder/Player.png";
@@ -199,7 +198,10 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
 
 client.once('ready', async () => {
     console.log(`[Discord] Bot aktif: ${client.user.tag}`);
-    client.user.setActivity('TSA | Karargah Radarı', { type: 0 });
+    
+    // ⚔️ HEDEF DÜZELTME: "TSA | Turkish Special Army Oynuyor" Aktivitesi Netleştirildi.
+    client.user.setActivity('TSA | Turkish Special Army', { type: ActivityType.Playing });
+    
     await robloxGiris();
 
     if (!AYARLAR.DISCORD_TOKEN) return;
@@ -230,14 +232,13 @@ client.on('interactionCreate', async (interaction) => {
     const yetkiliKomutlari = ['rütbe-değiştir', 'terfi', 'tenzil', 'duyuru', 'eğitim-başlat', 'grup-listele', 'yasakla', 'ses-katıl', 'ses-ayrıl'];
     if (yetkiliKomutlari.includes(commandName)) {
         if (!member.roles.cache.has(AYARLAR.YETKILI_ROL_ID) && !member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({ content: '❌ Bu askeri komutu kullanmak için yetkili karargah rolüne sahip diziniz.', ephemeral: true });
+            return interaction.reply({ content: '❌ Bu askeri komutu kullanmak için yetkili karargah rolüne sahip değilsiniz.', ephemeral: true });
         }
     }
 
     await interaction.deferReply();
 
     try {
-        // ==================== 🔊 SES KANALI AKTİVASYONU ====================
         if (commandName === 'ses-katıl') {
             const sesKanali = member.voice.channel;
             if (!sesKanali) {
@@ -265,7 +266,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply("🛑 Ses kanalından başarıyla ayrılındı, nöbet tamamlandı.");
         }
 
-        // ==================== 🎖️ RÜTBE VE İDARİ İŞLEMLER ====================
         else if (commandName === 'rütbe-değiştir') {
             const username = options.getString('roblox-isim');
             const targetRankId = options.getInteger('rütbe');
@@ -318,14 +318,11 @@ client.on('interactionCreate', async (interaction) => {
                 let inputId = AYARLAR.OYUN_ID.trim();
                 let nihaiUniverseId = inputId;
 
-                // 🚨 AKILLI DOĞRULAMA: Girdi bir Place ID mi yoksa Universe ID mi?
-                // Eğer doğrudan sorgulama yapıldığında veri gelmezse, Place ID girilmiştir mantığıyla dönüştürücü tetiklenir.
                 let url = `https://games.roblox.com/v1/games?universeIds=${inputId}`;
                 let response = await fetch(url);
                 let data = await response.json();
 
                 if (!data || !data.data || data.data.length === 0) {
-                    // Place ID'yi Universe ID'ye çeviren yedek köprü API'si devreye giriyor
                     const ceviriciUrl = `https://apis.roblox.com/universes/v1/places/${inputId}/universe`;
                     const ceviriciRes = await fetch(ceviriciUrl);
                     const ceviriciData = await ceviriciRes.json();
@@ -353,7 +350,7 @@ client.on('interactionCreate', async (interaction) => {
                 await interaction.editReply({ embeds: [oyunEmbed] });
             } catch (err) {
                 console.error("[Aktiflik Hatası]", err);
-                await interaction.editReply("❌ Canlı oyuncu verisi şu an Roblox API sunucularından çekilemedi. Lütfen ENV kısmındaki OYUN_ID değerini kontrol edin.");
+                await interaction.editReply("❌ Canlı oyuncu verisi şu an Roblox API sunucularından çekilemedi.");
             }
         }
 
