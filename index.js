@@ -1,11 +1,10 @@
-const dns = require('dns');
-dns.setDefaultResultOrder('ipv4first'); // Render DNS fix
-
 const fetch = require('node-fetch');
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const noblox = require('noblox.js');
 const http = require('http');
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
 
 const AYARLAR = {
     DISCORD_TOKEN: process.env.DISCORD_TOKEN,
@@ -230,23 +229,23 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
         } catch (e) {}
 
         const logEmbed = new EmbedBuilder()
-    .setColor('#3b5998')
-    .setTitle('İşlem Başarılı Rütbe Değiştirildi')
-    .addFields(
+  .setColor('#3b5998')
+  .setTitle('İşlem Başarılı Rütbe Değiştirildi')
+  .addFields(
                 { name: 'Kullanıcı', value: `${robloxUsername}`, inline: false },
                 { name: 'İşlem Yapan', value: `${interaction.user.username}`, inline: false },
                 { name: 'Eski Rütbe', value: `${eskiRutbe}`, inline: false },
                 { name: 'Yeni Rütbe', value: `${yeniRutbe}`, inline: false },
                 { name: 'Sebep', value: `${sebep || 'Belirtilmedi'}`, inline: false }
             )
-    .setThumbnail(avatarUrl)
-    .setTimestamp();
+  .setThumbnail(avatarUrl)
+  .setTimestamp();
 
         const butonRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-        .setLabel('Kullanıcı Bilgi')
-        .setStyle(ButtonStyle.Link)
-        .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
+      .setLabel('Kullanıcı Bilgi')
+      .setStyle(ButtonStyle.Link)
+      .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
         );
 
         const logKanali = client.channels.cache.get(AYARLAR.LOG_CHANNEL_ID);
@@ -261,7 +260,7 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
 
 client.once('clientReady', async () => {
     console.log(`[Discord] Bot aktif: ${client.user.tag}`);
-    client.user.setActivity('TSA | Karargah Radarı', { type: 0 });
+    client.user.setActivity('TSA | Turkish Special Army', { type: ActivityType.Playing });
     await robloxGiris();
 
     if (!AYARLAR.DISCORD_TOKEN) return;
@@ -277,10 +276,21 @@ client.once('clientReady', async () => {
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'rütbe-değiştir' || interaction.commandName === 'toplu-rütbe') {
-            const focusedValue = interaction.options.getFocused().toLowerCase();
-            let secenekler =!focusedValue
-        ? ILK_25_RUTBE
-                : TUM_RUTBELER.filter(r => r.name.toLowerCase().includes(focusedValue)).slice(0, 25);
+            const focusedValue = interaction.options.getFocused().toLowerCase().trim();
+
+            let secenekler;
+            if (!focusedValue) {
+                secenekler = ILK_25_RUTBE;
+            } else {
+                secenekler = TUM_RUTBELER.filter(r => {
+                    const nameLower = r.name.toLowerCase();
+                    if (nameLower.startsWith(focusedValue)) return true;
+                    if (nameLower.includes(focusedValue)) return true;
+                    const parts = nameLower.split(' ');
+                    return parts.some(p => p.startsWith(focusedValue));
+                }).slice(0, 25);
+            }
+
             try { await interaction.respond(secenekler); } catch (err) {}
         }
         return;
@@ -375,11 +385,11 @@ client.on('interactionCreate', async (interaction) => {
                 if (data && data.data && data.data.length > 0) {
                     const gercekAktifOyuncu = data.data[0].playing || 0;
                     const oyunEmbed = new EmbedBuilder()
-                 .setColor('#2b2d31')
-                 .setTitle('⚔ Türk Askeri Oyunu | Canlı Aktiflik Radarı')
-                 .setDescription(`Anlık olarak operasyon bölgesinde bulunan net personel sayısı: **${gercekAktifOyuncu}**`)
-                 .setTimestamp()
-                 .setFooter({ text: 'Sistem: Karargah Canlı Senkronizasyonu Aktif' });
+              .setColor('#2b2d31')
+              .setTitle('⚔ Türk Askeri Oyunu | Canlı Aktiflik Radarı')
+              .setDescription(`Anlık olarak operasyon bölgesinde bulunan net personel sayısı: **${gercekAktifOyuncu}**`)
+              .setTimestamp()
+              .setFooter({ text: 'Sistem: Karargah Canlı Senkronizasyonu Aktif' });
                     await interaction.editReply({ embeds: [oyunEmbed] });
                 } else {
                     await interaction.editReply("❌ Oyun verileri çekilemedi.");
@@ -397,10 +407,10 @@ client.on('interactionCreate', async (interaction) => {
             const avatarResmi = await noblox.getPlayerThumbnail(userId, "150x150", "png", false, "Headshot");
             const avatarUrl = avatarResmi[0]?.imageUrl || "https://www.roblox.com/images/ThumbnailHolder/Player.png";
             const profilEmbed = new EmbedBuilder()
-        .setColor('#2b2d31')
-        .setTitle(`| TSA | Personel Künye Bilgisi`)
-        .setDescription(`**Kullanıcı Adı:** ${username}\n**Mevcut Rütbe:** ${rankName}`)
-        .setThumbnail(avatarUrl);
+     .setColor('#2b2d31')
+     .setTitle(`| TSA | Personel Künye Bilgisi`)
+     .setDescription(`**Kullanıcı Adı:** ${username}\n**Mevcut Rütbe:** ${rankName}`)
+     .setThumbnail(avatarUrl);
             const profilButon = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setLabel('Profilini Aç').setStyle(ButtonStyle.Link).setURL(`https://www.roblox.com/users/${userId}/profile`)
             );
@@ -416,9 +426,9 @@ client.on('interactionCreate', async (interaction) => {
                 grupMetni += `• **${g.Name}** — *Rütbe: ${g.Role}*\n`;
             });
             const grupEmbed = new EmbedBuilder()
-        .setColor('#2b2d31')
-        .setTitle(`📂 ${username} Kullanıcısının Roblox Grupları`)
-        .setDescription(grupMetni || "Bu kullanıcı herhangi bir Roblox grubuna üye değil.");
+     .setColor('#2b2d31')
+     .setTitle(`📂 ${username} Kullanıcısının Roblox Grupları`)
+     .setDescription(grupMetni || "Bu kullanıcı herhangi bir Roblox grubuna üye değil.");
             await interaction.editReply({ embeds: [grupEmbed] });
         }
 
@@ -512,11 +522,11 @@ client.on('interactionCreate', async (interaction) => {
             const userId = await noblox.getIdFromUsername(username);
 
             const davetEmbed = new EmbedBuilder()
-        .setColor('#00ff00')
-        .setTitle('🎮 TSA Oyun Daveti')
-        .setDescription(`**${username}** için davet oluşturuldu.\n\n**Mesaj:** ${mesaj}`)
-        .addFields({ name: 'Oyun Linki', value: `https://www.roblox.com/games/${AYARLAR.OYUN_ID}` })
-        .setFooter({ text: `Davet eden: ${interaction.user.username}` });
+     .setColor('#00ff00')
+     .setTitle('🎮 TSA Oyun Daveti')
+     .setDescription(`**${username}** için davet oluşturuldu.\n\n**Mesaj:** ${mesaj}`)
+     .addFields({ name: 'Oyun Linki', value: `https://www.roblox.com/games/${AYARLAR.OYUN_ID}` })
+     .setFooter({ text: `Davet eden: ${interaction.user.username}` });
 
             await interaction.editReply({ embeds: [davetEmbed] });
         }
@@ -568,11 +578,11 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             const embed = new EmbedBuilder()
-        .setColor('#00ff00')
-        .setTitle(`📋 ${sesKanali.name} Yoklama Raporu`)
-        .setDescription(yoklamaListesi || 'Kanalda personel yok.')
-        .setFooter({ text: `Toplam ${sayac} personel tespit edildi` })
-        .setTimestamp();
+     .setColor('#00ff00')
+     .setTitle(`📋 ${sesKanali.name} Yoklama Raporu`)
+     .setDescription(yoklamaListesi || 'Kanalda personel yok.')
+     .setFooter({ text: `Toplam ${sayac} personel tespit edildi` })
+     .setTimestamp();
 
             await interaction.editReply({ content: '', embeds: [embed] });
         }
@@ -583,11 +593,11 @@ client.on('interactionCreate', async (interaction) => {
             const etiketle = options.getBoolean('etiket') || false;
 
             const duyuruEmbed = new EmbedBuilder()
-        .setColor('#ff0000')
-        .setTitle('📢 | TSA RESMİ DUYURU')
-        .setDescription(icerik)
-        .setFooter({ text: `Duyuran: ${interaction.user.username}` })
-        .setTimestamp();
+     .setColor('#ff0000')
+     .setTitle('📢 | TSA RESMİ DUYURU')
+     .setDescription(icerik)
+     .setFooter({ text: `Duyuran: ${interaction.user.username}` })
+     .setTimestamp();
 
             const mesaj = await hedefKanal.send({
                 content: etiketle? '@everyone' : null,
@@ -604,24 +614,17 @@ client.on('interactionCreate', async (interaction) => {
             const rutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
 
             const cezaEmbed = new EmbedBuilder()
-        .setColor('#ff0000')
-        .setTitle('⚠️ Disiplin Cezası')
-        .addFields(
+     .setColor('#ff0000')
+     .setTitle('⚠️ Disiplin Cezası')
+     .addFields(
                     { name: 'Personel', value: username, inline: true },
                     { name: 'Rütbe', value: rutbe, inline: true },
                     { name: 'Ceza Veren', value: interaction.user.username, inline: true },
                     { name: 'Sebep', value: sebep, inline: false }
                 )
-        .setTimestamp();
+     .setTimestamp();
 
             const logKanali = client.channels.cache.get(AYARLAR.LOG_CHANNEL_ID);
             if (logKanali) await logKanali.send({ embeds: [cezaEmbed] });
 
-            await interaction.editReply({ embeds: [cezaEmbed] });
-        }
-
-        else if (commandName === 'nöbet') {
-            const kisiler = options.getString('kişiler').split(',').map(k => k.trim());
-            const sureDk = options.getInteger('süre');
-
-            await interaction.editReply(`🔔 Nöbet sistemi başlatıldı. **${sureDk}** dakikada bir
+            await interaction.editReply({ embeds:
