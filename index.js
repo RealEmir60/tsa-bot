@@ -11,6 +11,9 @@ const AYARLAR = {
     OYUN_ID: 138257110169831 
 };
 
+// Rütbeleri hafızada tutmak için önbellek (Hızlı yanıt için)
+let GRUP_RUTBELERI = [];
+
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
@@ -21,7 +24,13 @@ const commands = [
         description: 'Belirtilen Roblox kullanıcısının rütbesini değiştirir.',
         options: [
             { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true },
-            { name: 'rütbe', description: 'Değiştirilmek istenen yeni rütbe ID (Örn: 30)', type: ApplicationCommandOptionType.Integer, required: true },
+            { 
+                name: 'rütbe', 
+                description: 'Değiştirilmek istenen yeni rütbe (Yazarak arayabilirsiniz)', 
+                type: ApplicationCommandOptionType.Integer, 
+                required: true,
+                autocomplete: true // CANLI ARAMA ÖZELLİĞİ AKTİF EDİLDİ
+            },
             { name: 'sebep', description: 'İşlem sebebi', type: ApplicationCommandOptionType.String, required: true }
         ]
     },
@@ -84,12 +93,20 @@ const commands = [
 
 async function robloxGiris() {
     try {
-        if (!AYARLAR.ROBLOX_COOKIE) return console.error("[Roblox] Hata: ROBLOX_COOKIE çevre değişkeni tanımlanmamış!");
+        if (!AYARLAR.ROBLOX_COOKIE) return console.error("[Roblox] Hata: ROBLOX_COOKIE tanımlanmamış!");
         await noblox.setCookie(AYARLAR.ROBLOX_COOKIE);
         const botKullanici = await noblox.getAuthenticatedUser();
         console.log(`[Roblox] Başarılı: ${botKullanici.UserName} olarak giriş yapıldı.`);
+        
+        // Gruptaki tüm rütbeleri Roblox API'den çekip hafızaya alıyoruz
+        const roller = await noblox.getRoles(AYARLAR.GROUP_ID);
+        GRUP_RUTBELERI = roller.filter(r => r.rank !== 0).map(r => ({
+            name: `${r.name} (ID: ${r.rank})`,
+            value: r.rank
+        })).reverse();
+        console.log(`[Roblox] ${GRUP_RUTBELERI.length} adet grup rütbesi başarıyla hafızaya alındı.`);
     } catch (err) {
-        console.error("[Roblox] Giriş başarısız (Çerez geçersiz veya IP engeli):", err.message);
+        console.error("[Roblox] Giriş başarısız:", err.message);
     }
 }
 
@@ -99,12 +116,10 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
         try {
             const avatarResmi = await noblox.getPlayerThumbnail(robloxUserId, "150x150", "png", false, "Headshot");
             if (avatarResmi && avatarResmi[0]) avatarUrl = avatarResmi[0].imageUrl;
-        } catch (e) {
-            console.log("[Sistem] Profil resmi çekilemedi.");
-        }
+        } catch (e) {}
 
         const logKanali = client.channels.cache.get(AYARLAR.LOG_CHANNEL_ID);
-        if (!logKanali) return console.log(`[Sistem] Log kanalı bulunamadı: ${AYARLAR.LOG_CHANNEL_ID}`);
+        if (!logKanali) return;
 
         const logEmbed = new EmbedBuilder()
             .setColor('#2b2d31')
@@ -136,25 +151,36 @@ client.once('ready', async () => {
     console.log(`[Discord] Bot aktif: ${client.user.tag}`);
     await robloxGiris();
 
-    client.guilds.cache.forEach(async (guild) => {
-        try {
-            const botUyesi = await guild.members.fetch(client.user.id);
-            await botUyesi.setNickname('| TSA  |  Karargah');
-        } catch (e) {}
-    });
-
-    if (!AYARLAR.DISCORD_TOKEN) return console.error("[Discord] Hata: DISCORD_TOKEN bulunamadı!");
+    if (!AYARLAR.DISCORD_TOKEN) return;
     const rest = new REST({ version: '10' }).setToken(AYARLAR.DISCORD_TOKEN);
     try {
         console.log('[Discord] Slash komutları yükleniyor...');
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('[Discord] Slash komutları başarıyla kaydedildi!');
+        console.log('[Discord] Slash komutları dinamik olarak kaydedildi!');
     } catch (error) {
         console.error("[Discord Komut Hatası]", error);
     }
 });
 
+// CANLI RÜTBE ARAMA VE ETKİLEŞİM YÖNETİMİ
 client.on('interactionCreate', async (interaction) => {
+    // 1. KISIM: Kullanıcı rütbe seçerken canlı listeyi önünene serme (Autocomplete)
+    if (interaction.isAutocomplete()) {
+        if (interaction.commandName === 'rütbe-değiştir') {
+            const focusedValue = interaction.options.focused().toLowerCase();
+            
+            // Kullanıcı bir şey yazdıysa ona göre filtrele, yazmadıysa ilk 25 rütbeyi göster
+            let filtrelenmis = GRUP_RUTBELERI.filter(choice => 
+                choice.name.toLowerCase().includes(focusedValue)
+            );
+            
+            // Discord en fazla 25 seçenek kabul eder, taşmayı engelliyoruz
+            await interaction.respond(filtrelenmis.slice(0, 25));
+        }
+        return;
+    }
+
+    // 2. KISIM: Normal Komut İşlemleri
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName, options, member } = interaction;
@@ -200,7 +226,7 @@ client.on('interactionCreate', async (interaction) => {
 
         else if (commandName === 'tenzil') {
             const username = options.getString('roblox-isim');
-            const sebep = options.getString('sebep'); // Tenzil sebebi düzeltildi
+            const sebep = options.getString('sebep');
 
             const userId = await noblox.getIdFromUsername(username);
             const eskiRutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
