@@ -11,8 +11,10 @@ const AYARLAR = {
     OYUN_ID: 138257110169831 
 };
 
-// Rütbeleri hafızada tutmak için önbellek (Hızlı yanıt için)
-let GRUP_RUTBELERI = [];
+// Canlı rütbeler yüklenene kadar yedek olarak duracak acil durum listesi
+let GRUP_RUTBELERI = [
+    { name: 'Yükleniyor... Lütfen az sonra tekrar deneyin.', value: 0 }
+];
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
@@ -26,10 +28,10 @@ const commands = [
             { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true },
             { 
                 name: 'rütbe', 
-                description: 'Değiştirilmek istenen yeni rütbe (Yazarak arayabilirsiniz)', 
+                description: 'Değiştirilmek istenen yeni rütbe', 
                 type: ApplicationCommandOptionType.Integer, 
                 required: true,
-                autocomplete: true // CANLI ARAMA ÖZELLİĞİ AKTİF EDİLDİ
+                autocomplete: true 
             },
             { name: 'sebep', description: 'İşlem sebebi', type: ApplicationCommandOptionType.String, required: true }
         ]
@@ -98,15 +100,19 @@ async function robloxGiris() {
         const botKullanici = await noblox.getAuthenticatedUser();
         console.log(`[Roblox] Başarılı: ${botKullanici.UserName} olarak giriş yapıldı.`);
         
-        // Gruptaki tüm rütbeleri Roblox API'den çekip hafızaya alıyoruz
+        // Rütbeleri çekip GRUP_RUTBELERI listesini tamamiyle güncelliyoruz
         const roller = await noblox.getRoles(AYARLAR.GROUP_ID);
-        GRUP_RUTBELERI = roller.filter(r => r.rank !== 0).map(r => ({
+        const geciciListe = roller.filter(r => r.rank !== 0).map(r => ({
             name: `${r.name} (ID: ${r.rank})`,
             value: r.rank
         })).reverse();
-        console.log(`[Roblox] ${GRUP_RUTBELERI.length} adet grup rütbesi başarıyla hafızaya alındı.`);
+
+        if (geciciListe.length > 0) {
+            GRUP_RUTBELERI = geciciListe;
+            console.log(`[Roblox] ${GRUP_RUTBELERI.length} adet grup rütbesi başarıyla hafızaya alındı.`);
+        }
     } catch (err) {
-        console.error("[Roblox] Giriş başarısız:", err.message);
+        console.error("[Roblox] Giriş veya rütbe yükleme başarısız:", err.message);
     }
 }
 
@@ -162,25 +168,27 @@ client.once('ready', async () => {
     }
 });
 
-// CANLI RÜTBE ARAMA VE ETKİLEŞİM YÖNETİMİ
+// CANLI OTO-TAMAMLAMA YÖNETİCİSİ
 client.on('interactionCreate', async (interaction) => {
-    // 1. KISIM: Kullanıcı rütbe seçerken canlı listeyi önünene serme (Autocomplete)
     if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'rütbe-değiştir') {
-            const focusedValue = interaction.options.focused().toLowerCase();
-            
-            // Kullanıcı bir şey yazdıysa ona göre filtrele, yazmadıysa ilk 25 rütbeyi göster
-            let filtrelenmis = GRUP_RUTBELERI.filter(choice => 
-                choice.name.toLowerCase().includes(focusedValue)
-            );
-            
-            // Discord en fazla 25 seçenek kabul eder, taşmayı engelliyoruz
-            await interaction.respond(filtrelenmis.slice(0, 25));
+            try {
+                const focusedValue = interaction.options.focused().toLowerCase();
+                
+                // Hafızadaki rütbeleri filtrelenmiş olarak getir
+                let filtrelenmis = GRUP_RUTBELERI.filter(choice => 
+                    choice.name.toLowerCase().includes(focusedValue)
+                );
+                
+                // Discord 25'ten fazla seçenekte hata verir, üst sınırı koruyoruz
+                await interaction.respond(filtrelenmis.slice(0, 25));
+            } catch (err) {
+                console.error("[Autocomplete Hatası] Seçenekler zamanında iletilemedi:", err.message);
+            }
         }
         return;
     }
 
-    // 2. KISIM: Normal Komut İşlemleri
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName, options, member } = interaction;
@@ -199,6 +207,10 @@ client.on('interactionCreate', async (interaction) => {
             const username = options.getString('roblox-isim');
             const targetRankId = options.getInteger('rütbe');
             const sebep = options.getString('sebep');
+
+            if (targetRankId === 0) {
+                return interaction.editReply("❌ Geçersiz rütbe seçimi! Lütfen listeden geçerli bir rütbe seçin.");
+            }
 
             const userId = await noblox.getIdFromUsername(username);
             const eskiRutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
