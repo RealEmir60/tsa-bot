@@ -11,34 +11,50 @@ const AYARLAR = {
     OYUN_ID: 138257110169831 
 };
 
-// Rütbeleri direkt Discord komut listesinin içine (choices) gömdük! Gözükmeme şansı SIFIR.
-const RUTBE_SECENEKLERI = [
-    { name: '[OR-1] Acemi Er', value: 1 },
-    { name: '[OR-2] Onbaşı', value: 2 },
-    { name: '[OR-3] Uzman Onbaşı', value: 3 },
-    { name: '[OR-4] Çavuş', value: 4 },
-    { name: '[OR-5] Uzman Çavuş', value: 5 },
-    { name: '[OR-6] Astsubay Çavuş', value: 6 },
-    { name: '[OR-7] Astsubay Üstçavuş', value: 7 },
-    { name: '[OR-8] Astsubay Başçavuş', value: 8 },
-    { name: '[OR-9] Astsubay Kd. Başçavuş', value: 9 },
-    { name: '[OF-1/A] Asteğmen', value: 10 },
-    { name: '[OF-1/B] Teğmen', value: 11 },
-    { name: '[OF-1/C] Üsteğmen', value: 12 },
-    { name: '[OF-2] YüzBaşı', value: 13 },
-    { name: '[OF-3] Binbaşı', value: 14 },
-    { name: '[OF-4] Yarbay', value: 15 },
-    { name: '[OF-5] Albay', value: 16 },
-    { name: '[OF-6] Tuğgeneral', value: 17 },
-    { name: '[OF-7] Tümgeneral', value: 18 },
-    { name: '[OF-8] Korgeneral', value: 19 },
-    { name: '[OF-9] Orgeneral', value: 20 },
-    { name: 'Paşa', value: 23 },
-    { name: 'Ordu Komutanı', value: 25 },
-    { name: 'Disiplin Kurulu', value: 26 },
-    { name: 'Lider', value: 27 },
-    { name: 'Genel Kurmay', value: 29 }
+// ==================== 🪖 TÜM TSA GRUP RÜTBE LİSTESİ ====================
+// Gönderdiğin listenin tamamı buradadır. Akıllı arama sayesinde 25 sınırı aşılmıştır!
+const GRUP_RUTBELERI = [
+    { name: '[OR-1] Acemi Er (ID: 1)', value: 1 },
+    { name: '[OR-2] Onbaşı (ID: 2)', value: 2 },
+    { name: '[OR-3] Uzman Onbaşı (ID: 3)', value: 3 },
+    { name: '[OR-4] Çavuş (ID: 4)', value: 4 },
+    { name: '[OR-5] Uzman Çavuş (ID: 5)', value: 5 },
+    { name: '[OR-6] Astsubay Çavuş (ID: 6)', value: 6 },
+    { name: '[OR-7] Astsubay Üstçavuş (ID: 7)', value: 7 },
+    { name: '[OR-8] Astsubay Başçavuş (ID: 8)', value: 8 },
+    { name: '[OR-9] Astsubay Kd. Başçavuş (ID: 9)', value: 9 },
+    { name: '[OF-1/A] Asteğmen (ID: 10)', value: 10 },
+    { name: '[OF-1/B] Teğmen (ID: 11)', value: 11 },
+    { name: '[OF-1/C] Üsteğmen (ID: 12)', value: 12 },
+    { name: '[OF-2] YüzBaşı (ID: 13)', value: 13 },
+    { name: '[OF-3] Binbaşı (ID: 14)', value: 14 },
+    { name: '[OF-4] Yarbay (ID: 15)', value: 15 },
+    { name: '[OF-5] Albay (ID: 16)', value: 16 },
+    { name: '[OF-6] Tuğgeneral (ID: 17)', value: 17 },
+    { name: '[OF-7] Tümgeneral (ID: 18)', value: 18 },
+    { name: '[OF-8] Korgeneral (ID: 19)', value: 19 },
+    { name: '[OF-9] Orgeneral (ID: 20)', value: 20 },
+    { name: 'Paşa (ID: 23)', value: 23 },
+    { name: 'Ordu Komutanı (ID: 25)', value: 25 },
+    { name: 'Disiplin Kurulu (ID: 26)', value: 26 },
+    { name: 'Lider (ID: 27)', value: 27 },
+    { name: 'Genel Kurmay (ID: 29)', value: 29 },
+    { name: 'Genel Kurmay Başkanı (ID: 30)', value: 30 },
+    { name: 'Yüksek Askeri Şura (ID: 31)', value: 31 },
+    { name: 'Yönetim Kurulu (ID: 32)', value: 32 },
+    { name: 'Yönetim Kurulu Başkan Y. (ID: 33)', value: 33 },
+    { name: 'Yönetim Kurulu Başkanı (ID: 34)', value: 34 },
+    { name: 'OF-10 Mareşal (ID: 35)', value: 35 },
+    { name: 'Yardımcı Grup Sahibi (ID: 36)', value: 36 },
+    { name: 'Rütbelendirme Botu (ID: 40)', value: 40 },
+    { name: 'Stajyer Geliştirme Ofisi (ID: 250)', value: 250 },
+    { name: 'Geliştirme Ofisi (ID: 251)', value: 251 },
+    { name: 'Geliştirme Ofisi Başkanı (ID: 252)', value: 252 },
+    { name: '2. Grup Sahibi (ID: 253)', value: 253 },
+    { name: 'Grup Sahibi (ID: 254)', value: 254 },
+    { name: 'TSA (ID: 255)', value: 255 }
 ];
+// ===================================================================
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers]
@@ -52,10 +68,10 @@ const commands = [
             { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true },
             { 
                 name: 'rütbe', 
-                description: 'Değiştirilmek istenen yeni rütbe', 
+                description: 'Değiştirilmek istenen yeni rütbe (Yazarak arayabilirsiniz)', 
                 type: ApplicationCommandOptionType.Integer, 
                 required: true,
-                choices: RUTBE_SECENEKLERI // Discord artık bunu otomatik liste yapacak
+                autocomplete: true // Akıllı arama motorunu tekrar devreye soktuk
             },
             { name: 'sebep', description: 'İşlem sebebi', type: ApplicationCommandOptionType.String, required: true }
         ]
@@ -177,7 +193,27 @@ client.once('ready', async () => {
     }
 });
 
+// ==================== 🎯 AKILLI ARAMA VE FİLTRELEME MOTORU ====================
 client.on('interactionCreate', async (interaction) => {
+    if (interaction.isAutocomplete()) {
+        if (interaction.commandName === 'rütbe-değiştir') {
+            try {
+                const focusedValue = interaction.options.focused().toLowerCase();
+                
+                // Klavyeden girilen harfe göre tüm listeyi (35+ rütbe) anlık tarar
+                let filtrelenmis = GRUP_RUTBELERI.filter(choice => 
+                    choice.name.toLowerCase().includes(focusedValue)
+                );
+                
+                // Discord sınırından dolayı eşleşen rütbelerin ilk 25 tanesini ekrana basar
+                await interaction.respond(filtrelenmis.slice(0, 25));
+            } catch (err) {
+                console.error("[Arama Motoru Hatası]", err.message);
+            }
+        }
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName, options, member, guild } = interaction;
