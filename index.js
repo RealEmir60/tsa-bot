@@ -2,7 +2,7 @@ const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 
 const fetch = require('node-fetch');
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType, ModalBuilder, TextInputStyle } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const noblox = require('noblox.js');
 const http = require('http');
@@ -636,15 +636,8 @@ client.on('interactionCreate', async (interaction) => {
             const sunucuUyesi = await guild.members.fetch(hedefKullanici.id).catch(() => null);
             if (!sunucuUyesi ||!sunucuUyesi.bannable) return interaction.editReply("❌ Kullanıcı bulunamadı veya botun yetkisi yetersiz.");
             await sunucuUyesi.ban({ reason: sebep });
-            await interaction.editReply(`✅ ${hedefKullanici.tag} başarıyla sunucudan uzaklaştırıldı.`);
+            await interaction.editReply(`✅ ${hedefKullanici.tag} başarıyla sunucudan yasaklandı. Sebep: ${sebep}`);
         }
 
         else if (commandName === 'grup') {
-            const grupLinki = `https://www.roblox.com/communities/${AYARLAR.GROUP_ID}`;
-            await interaction.editReply(`📍 **TSA Roblox Grup Linki:**\n${grupLinki}`);
-        }
-
-        else if (commandName === 'rütbeler') {
-            const rutbeListesi = TUM_RUTBELER.map(r => `• **${r.name}** (ID: ${r.value})`).join('\n');
-            const rutbeEmbed = new EmbedBuilder()
-               .setColor('#2b2d
+            await interaction.editReply(`🔗 **TSA Grup Linki:** https://www.roblox.com
