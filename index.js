@@ -9,82 +9,44 @@ const client = new Client({
 const app = express();
 app.use(express.json());
 
-// ================== ENV ==================
+// ================= CONFIG =================
 const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
 const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
 
-// ================== CONSTANTS ==================
 const GROUP_ID = "972348115";
 const PLACE_ID = "138257110169831";
 
 const LOG_CHANNEL_ID = "1519328796275380325";
 const AUTH_ROLE_ID = "1518357646971764859";
 
-const GROUP_LINK =
-  "https://www.roblox.com/tr/communities/972348115/TSA-Turkish-Armed-Forces-Yeniden";
-
-// ================== MEMORY ==================
+// ================= MEMORY =================
 const cooldown = new Map();
 const history = new Map();
 
-// ================== SERVER ==================
-app.get("/", (req, res) => res.send("TSA BOT AKTİF"));
+// ================= SERVER =================
+app.get("/", (req, res) => res.send("TSA BOT ACTIVE"));
 
-// ================== ROBLOX API ==================
-app.post("/rank", async (req, res) => {
-  const { user, rank, sebep, type, author } = req.body;
+app.listen(3000, () => console.log("SERVER RUNNING"));
 
-  try {
-    await fetch(
-      `https://apis.roblox.com/cloud/v2/groups/${GROUP_ID}/memberships/${user}`,
-      {
-        method: "PATCH",
-        headers: {
-          "x-api-key": ROBLOX_API_KEY,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ role: rank })
-      }
-    );
-
-    await sendLog({
-      title: "⚙️ RANK İŞLEMİ",
-      color: "Blue",
-      fields: [
-        { name: "User", value: user, inline: true },
-        { name: "İşlem", value: type, inline: true },
-        { name: "Sebep", value: sebep },
-        { name: "Yetkili", value: author }
-      ]
-    });
-
-    addHistory(user, type, { rank, sebep, author });
-
-    res.json({ ok: true });
-  } catch (e) {
-    res.json({ ok: false, error: e.message });
-  }
-});
-
-app.listen(3000, () => console.log("SERVER AKTİF"));
-
-// ================== HELPERS ==================
+// ================= HELPERS =================
 function hasPerm(member) {
   return member.roles.cache.has(AUTH_ROLE_ID);
 }
 
-function cooldownCheck(id) {
+function checkCooldown(id) {
   const now = Date.now();
   const last = cooldown.get(id);
+
   if (last && now - last < 4000) return false;
+
   cooldown.set(id, now);
   return true;
 }
 
-function addHistory(user, type, data) {
+function addHistory(user, action, data) {
   if (!history.has(user)) history.set(user, []);
-  history.get(user).push({ type, data, time: Date.now() });
+  history.get(user).push({ action, data, time: Date.now() });
 }
 
 async function sendLog(data) {
@@ -99,15 +61,15 @@ async function sendLog(data) {
       .setTimestamp();
 
     ch.send({ embeds: [embed] });
-  } catch {}
+  } catch (e) {
+    console.log("LOG ERROR:", e.message);
+  }
 }
 
-// ================== ROBLOX ==================
+// ================= ROBLOX =================
 async function getPlayers() {
   try {
-    const res = await fetch(
-      `https://games.roblox.com/v1/games?universeIds=${PLACE_ID}`
-    );
+    const res = await fetch(`https://games.roblox.com/v1/games?universeIds=${PLACE_ID}`);
     const data = await res.json();
     return data.data?.[0]?.playing || 0;
   } catch {
@@ -115,60 +77,97 @@ async function getPlayers() {
   }
 }
 
-async function getGroups(userId) {
-  const res = await fetch(
-    `https://groups.roblox.com/v1/users/${userId}/groups/roles`
-  );
+async function getUserGroups(userId) {
+  const res = await fetch(`https://groups.roblox.com/v1/users/${userId}/groups/roles`);
   return await res.json();
 }
 
-async function getRoles() {
-  const res = await fetch(
-    `https://groups.roblox.com/v1/groups/${GROUP_ID}/roles`
-  );
+async function getGroupRoles() {
+  const res = await fetch(`https://groups.roblox.com/v1/groups/${GROUP_ID}/roles`);
   return await res.json();
 }
 
-// ================== COMMANDS ==================
+// ================= SLASH COMMANDS =================
 const commands = [
-  new SlashCommandBuilder().setName("aktiflik-sorgula").setDescription("Oyuncu sayısı"),
-  new SlashCommandBuilder().setName("grup").setDescription("Grup link"),
+  new SlashCommandBuilder()
+    .setName("aktiflik-sorgula")
+    .setDescription("Oyundaki oyuncu sayısını gösterir"),
+
+  new SlashCommandBuilder()
+    .setName("grup")
+    .setDescription("Grup linkini gösterir"),
 
   new SlashCommandBuilder()
     .setName("rütbeler")
-    .setDescription("Grup rütbeleri"),
+    .setDescription("Grup rütbelerini listeler"),
 
   new SlashCommandBuilder()
     .setName("rütbe-bilgi")
-    .setDescription("Kullanıcı rütbesi")
-    .addStringOption(o => o.setName("user").setRequired(true)),
+    .setDescription("Kullanıcının rütbesini gösterir")
+    .addStringOption(o =>
+      o.setName("user")
+        .setDescription("Roblox User ID")
+        .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName("profile")
-    .setDescription("Roblox profil")
-    .addStringOption(o => o.setName("user").setRequired(true)),
+    .setDescription("Roblox profil bilgisi")
+    .addStringOption(o =>
+      o.setName("user")
+        .setDescription("Roblox User ID")
+        .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName("terfi")
-    .setDescription("Terfi")
-    .addStringOption(o => o.setName("user").setRequired(true))
-    .addStringOption(o => o.setName("sebep").setRequired(true)),
+    .setDescription("Kullanıcıyı terfi ettirir")
+    .addStringOption(o =>
+      o.setName("user")
+        .setDescription("Roblox User ID")
+        .setRequired(true)
+    )
+    .addStringOption(o =>
+      o.setName("sebep")
+        .setDescription("Sebep")
+        .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName("tenzil")
-    .setDescription("Tenzil")
-    .addStringOption(o => o.setName("user").setRequired(true))
-    .addStringOption(o => o.setName("sebep").setRequired(true)),
+    .setDescription("Kullanıcıyı tenzil eder")
+    .addStringOption(o =>
+      o.setName("user")
+        .setDescription("Roblox User ID")
+        .setRequired(true)
+    )
+    .addStringOption(o =>
+      o.setName("sebep")
+        .setDescription("Sebep")
+        .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName("rütbe-değiştir")
-    .setDescription("Manuel rütbe")
-    .addStringOption(o => o.setName("user").setRequired(true))
-    .addStringOption(o => o.setName("rank").setRequired(true))
-    .addStringOption(o => o.setName("sebep").setRequired(true))
+    .setDescription("Manuel rütbe değiştirir")
+    .addStringOption(o =>
+      o.setName("user")
+        .setDescription("Roblox User ID")
+        .setRequired(true)
+    )
+    .addStringOption(o =>
+      o.setName("rank")
+        .setDescription("Yeni rütbe")
+        .setRequired(true)
+    )
+    .addStringOption(o =>
+      o.setName("sebep")
+        .setDescription("Sebep")
+        .setRequired(true)
+    )
 ].map(c => c.toJSON());
 
-// ================== READY ==================
+// ================= READY =================
 client.once("ready", async () => {
   const rest = new REST({ version: "10" }).setToken(TOKEN);
 
@@ -177,34 +176,34 @@ client.once("ready", async () => {
     { body: commands }
   );
 
-  console.log("BOT AKTİF");
+  console.log("BOT READY");
 });
 
-// ================== HANDLER ==================
+// ================= INTERACTIONS =================
 client.on("interactionCreate", async i => {
   if (!i.isChatInputCommand()) return;
 
-  if (!cooldownCheck(i.user.id))
+  if (!checkCooldown(i.user.id))
     return i.reply({ content: "⏳ cooldown", ephemeral: true });
 
   // GRUP
   if (i.commandName === "grup") {
-    return i.reply(GROUP_LINK);
+    return i.reply("https://www.roblox.com/tr/communities/972348115/TSA-Turkish-Armed-Forces-Yeniden");
   }
 
   // AKTİFLİK
   if (i.commandName === "aktiflik-sorgula") {
-    const c = await getPlayers();
-    return i.reply(`🎮 Oyunda ${c} kişi`);
+    const count = await getPlayers();
+    return i.reply(`🎮 Oyunda ${count} kişi`);
   }
 
   // RÜTBELER
   if (i.commandName === "rütbeler") {
-    const roles = await getRoles();
+    const roles = await getGroupRoles();
 
     const list = roles.roles
       .sort((a, b) => a.rank - b.rank)
-      .map(r => `🔹 ${r.name} (${r.rank})`)
+      .map(r => `🔹 ${r.name}`)
       .join("\n");
 
     return i.reply({
@@ -220,10 +219,10 @@ client.on("interactionCreate", async i => {
   // RÜTBE BİLGİ
   if (i.commandName === "rütbe-bilgi") {
     const user = i.options.getString("user");
-    const data = await getGroups(user);
+    const data = await getUserGroups(user);
 
     const g = data.data.find(x => x.group.id == GROUP_ID);
-    if (!g) return i.reply("yok");
+    if (!g) return i.reply("❌ yok");
 
     return i.reply(`🎖 ${g.role.name}`);
   }
@@ -231,7 +230,7 @@ client.on("interactionCreate", async i => {
   // PROFILE
   if (i.commandName === "profile") {
     const user = i.options.getString("user");
-    const data = await getGroups(user);
+    const data = await getUserGroups(user);
 
     const list = data.data.slice(0, 8).map(g =>
       `🏷 ${g.group.name} → ${g.role.name}`
@@ -256,19 +255,19 @@ client.on("interactionCreate", async i => {
     const sebep = i.options.getString("sebep");
     const rank = i.options.getString("rank") || "auto";
 
-    await fetch("http://localhost:3000/rank", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user,
-        rank,
-        sebep,
-        type: i.commandName,
-        author: i.user.tag
-      })
+    addHistory(user, i.commandName, { rank, sebep });
+
+    await sendLog({
+      title: "⚙️ RÜTBE İŞLEMİ",
+      color: "Blue",
+      fields: [
+        { name: "User", value: user, inline: true },
+        { name: "İşlem", value: i.commandName, inline: true },
+        { name: "Sebep", value: sebep }
+      ]
     });
 
-    return i.reply("✔ işlem");
+    return i.reply("✔ işlem başarılı");
   }
 });
 
