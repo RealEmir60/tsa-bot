@@ -152,6 +152,10 @@ const commands = [
 async function robloxGiris() {
     try {
         if (!AYARLAR.ROBLOX_COOKIE) throw new Error("ROBLOX_COOKIE tanımlanmamış!");
+
+        console.log('[DEBUG] Cookie uzunluğu:', AYARLAR.ROBLOX_COOKIE.length);
+        console.log('[DEBUG] Cookie başı:', AYARLAR.ROBLOX_COOKIE.substring(0, 20));
+
         const currentUser = await noblox.setCookie(AYARLAR.ROBLOX_COOKIE);
         console.log(`[Roblox] Başarılı: ${currentUser.UserName} olarak giriş yapıldı.`);
     } catch (err) {
@@ -171,23 +175,23 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
         if (!logKanali) return null;
 
         const logEmbed = new EmbedBuilder()
-          .setColor('#3b5998')
-          .setTitle('İşlem Başarılı Rütbe Değiştirildi')
-          .addFields(
+         .setColor('#3b5998')
+         .setTitle('İşlem Başarılı Rütbe Değiştirildi')
+         .addFields(
                 { name: 'Kullanıcı', value: `${robloxUsername}`, inline: false },
                 { name: 'İşlem Yapan', value: `${interaction.user.username}`, inline: false },
                 { name: 'Eski Rütbe', value: `${eskiRutbe}`, inline: false },
                 { name: 'Yeni Rütbe', value: `${yeniRutbe}`, inline: false },
                 { name: 'Sebep', value: `${sebep || 'Belirtilmedi'}`, inline: false }
             )
-          .setThumbnail(avatarUrl)
-          .setTimestamp();
+         .setThumbnail(avatarUrl)
+         .setTimestamp();
 
         const butonRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-              .setLabel('Kullanıcı Bilgi')
-              .setStyle(ButtonStyle.Link)
-              .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
+             .setLabel('Kullanıcı Bilgi')
+             .setStyle(ButtonStyle.Link)
+             .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
         );
 
         return await logKanali.send({ embeds: [logEmbed], components: [butonRow] });
@@ -197,7 +201,7 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
     }
 }
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log(`[Discord] Bot aktif: ${client.user.tag}`);
     client.user.setActivity('TSA | Karargah Radarı', { type: 0 });
     await robloxGiris();
@@ -217,7 +221,7 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.commandName === 'rütbe-değiştir' || interaction.commandName === 'toplu-rütbe') {
             const focusedValue = interaction.options.getFocused().toLowerCase();
             let secenekler =!focusedValue
-              ? ILK_25_RUTBE
+             ? ILK_25_RUTBE
                 : TUM_RUTBELER.filter(r => r.name.toLowerCase().includes(focusedValue)).slice(0, 25);
             try { await interaction.respond(secenekler); } catch (err) {}
         }
@@ -308,11 +312,11 @@ client.on('interactionCreate', async (interaction) => {
                 if (data && data.data && data.data.length > 0) {
                     const gercekAktifOyuncu = data.data[0].playing || 0;
                     const oyunEmbed = new EmbedBuilder()
-                      .setColor('#2b2d31')
-                      .setTitle('⚔ Türk Askeri Oyunu | Canlı Aktiflik Radarı')
-                      .setDescription(`Anlık olarak operasyon bölgesinde bulunan net personel sayısı: **${gercekAktifOyuncu}**`)
-                      .setTimestamp()
-                      .setFooter({ text: 'Sistem: Karargah Canlı Senkronizasyonu Aktif' });
+                     .setColor('#2b2d31')
+                     .setTitle('⚔ Türk Askeri Oyunu | Canlı Aktiflik Radarı')
+                     .setDescription(`Anlık olarak operasyon bölgesinde bulunan net personel sayısı: **${gercekAktifOyuncu}**`)
+                     .setTimestamp()
+                     .setFooter({ text: 'Sistem: Karargah Canlı Senkronizasyonu Aktif' });
                     await interaction.editReply({ embeds: [oyunEmbed] });
                 } else {
                     await interaction.editReply("❌ Oyun verileri Roblox sunucularından çekilemedi. Lütfen OYUN_ID değerini kontrol edin.");
@@ -330,10 +334,10 @@ client.on('interactionCreate', async (interaction) => {
             const avatarResmi = await noblox.getPlayerThumbnail(userId, "150x150", "png", false, "Headshot");
             const avatarUrl = avatarResmi[0]?.imageUrl || "https://www.roblox.com/images/ThumbnailHolder/Player.png";
             const profilEmbed = new EmbedBuilder()
-              .setColor('#2b2d31')
-              .setTitle(`| TSA | Personel Künye Bilgisi`)
-              .setDescription(`**Kullanıcı Adı:** ${username}\n**Mevcut Rütbe:** ${rankName}`)
-              .setThumbnail(avatarUrl);
+             .setColor('#2b2d31')
+             .setTitle(`| TSA | Personel Künye Bilgisi`)
+             .setDescription(`**Kullanıcı Adı:** ${username}\n**Mevcut Rütbe:** ${rankName}`)
+             .setThumbnail(avatarUrl);
             const profilButon = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setLabel('Profilini Aç').setStyle(ButtonStyle.Link).setURL(`https://www.roblox.com/users/${userId}/profile`)
             );
@@ -349,9 +353,9 @@ client.on('interactionCreate', async (interaction) => {
                 grupMetni += `• **${g.Name}** — *Rütbe: ${g.Role}*\n`;
             });
             const grupEmbed = new EmbedBuilder()
-              .setColor('#2b2d31')
-              .setTitle(`📂 ${username} Kullanıcısının Roblox Grupları`)
-              .setDescription(grupMetni || "Bu kullanıcı herhangi bir Roblox grubuna üye değil.");
+             .setColor('#2b2d31')
+             .setTitle(`📂 ${username} Kullanıcısının Roblox Grupları`)
+             .setDescription(grupMetni || "Bu kullanıcı herhangi bir Roblox grubuna üye değil.");
             await interaction.editReply({ embeds: [grupEmbed] });
         }
 
