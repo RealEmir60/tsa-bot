@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, ApplicationCommandOptionType } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits } = require('discord.js');
 const noblox = require('noblox.js');
 const http = require('http');
 
@@ -11,13 +11,39 @@ const AYARLAR = {
     OYUN_ID: 138257110169831 
 };
 
-// Canlı rütbeler yüklenene kadar yedek olarak duracak acil durum listesi
-let GRUP_RUTBELERI = [
-    { name: 'Yükleniyor... Lütfen az sonra tekrar deneyin.', value: 0 }
+// ==================== 🛠️ TSA GRUP RÜTBE LİSTESİ (MAX 25 ADET) ====================
+// Gönderdiğin resmi şemaya göre birebir entegre edilmiştir.
+const GRUP_RUTBELERI = [
+    { name: '[OR-1] Acemi Er (ID: 1)', value: 1 },
+    { name: '[OR-2] Onbaşı (ID: 2)', value: 2 },
+    { name: '[OR-3] Uzman Onbaşı (ID: 3)', value: 3 },
+    { name: '[OR-4] Çavuş (ID: 4)', value: 4 },
+    { name: '[OR-5] Uzman Çavuş (ID: 5)', value: 5 },
+    { name: '[OR-6] Astsubay Çavuş (ID: 6)', value: 6 },
+    { name: '[OR-7] Astsubay Üstçavuş (ID: 7)', value: 7 },
+    { name: '[OR-8] Astsubay Başçavuş (ID: 8)', value: 8 },
+    { name: '[OR-9] Astsubay Kd. Başçavuş (ID: 9)', value: 9 },
+    { name: '[OF-1/A] Asteğmen (ID: 10)', value: 10 },
+    { name: '[OF-1/B] Teğmen (ID: 11)', value: 11 },
+    { name: '[OF-1/C] Üsteğmen (ID: 12)', value: 12 },
+    { name: '[OF-2] YüzBaşı (ID: 13)', value: 13 },
+    { name: '[OF-3] Binbaşı (ID: 14)', value: 14 },
+    { name: '[OF-4] Yarbay (ID: 15)', value: 15 },
+    { name: '[OF-5] Albay (ID: 16)', value: 16 },
+    { name: '[OF-6] Tuğgeneral (ID: 17)', value: 17 },
+    { name: '[OF-7] Tümgeneral (ID: 18)', value: 18 },
+    { name: '[OF-8] Korgeneral (ID: 19)', value: 19 },
+    { name: '[OF-9] Orgeneral (ID: 20)', value: 20 },
+    { name: 'Paşa (ID: 23)', value: 23 },
+    { name: 'Ordu Komutanı (ID: 25)', value: 25 },
+    { name: 'Disiplin Kurulu (ID: 26)', value: 26 },
+    { name: 'Lider (ID: 27)', value: 27 },
+    { name: 'Genel Kurmay (ID: 29)', value: 29 }
 ];
+// ===================================================================
 
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers]
 });
 
 const commands = [
@@ -60,17 +86,23 @@ const commands = [
         ]
     },
     {
-        name: 'aktiflik-sorgu',
-        description: 'Türk Askeri Oyunu içerisindeki aktif oyuncu sayısını gösterir.'
+        name: 'grup-listele',
+        description: 'Belirtilen Roblox kullanıcısının mevcut olduğu tüm grupları listeler.',
+        options: [
+            { name: 'roblox-isim', description: 'Grupları sorgulanacak Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }
+        ]
     },
     {
-        name: 'grup',
-        description: 'TSA Roblox grup linkini gönderir.'
+        name: 'yasakla',
+        description: 'Huzursuzluk çıkaran veya kuralları ihlal eden bir üyeyi sunucudan yasaklar.',
+        options: [
+            { name: 'kullanıcı', description: 'Yasaklanacak Discord üyesi', type: ApplicationCommandOptionType.User, required: true },
+            { name: 'sebep', description: 'Yasaklanma askeri gerekçesi', type: ApplicationCommandOptionType.String, required: true }
+        ]
     },
-    {
-        name: 'rütbeler',
-        description: 'TSA grubundaki tüm rütbeleri ve üye sayılarını listeler.'
-    },
+    { name: 'aktiflik-sorgu', description: 'Türk Askeri Oyunu içerisindeki aktif oyuncu sayısını gösterir.' },
+    { name: 'grup', description: 'TSA Roblox grup linkini gönderir.' },
+    { name: 'rütbeler', description: 'TSA grubundaki tüm rütbeleri ve üye sayılarını listeler.' },
     {
         name: 'duyuru',
         description: 'Seçilen kanala kurumsal bir duyuru gönderir.',
@@ -87,10 +119,7 @@ const commands = [
             { name: 'saat', description: 'Eğitim Saati (Örn: 20:00)', type: ApplicationCommandOptionType.String, required: true }
         ]
     },
-    {
-        name: 'karargah-durum',
-        description: 'TSA grubunun genel ve lojistik durum özetini gösterir.'
-    }
+    { name: 'karargah-durum', description: 'TSA grubunun genel ve lojistik durum özetini gösterir.' }
 ];
 
 async function robloxGiris() {
@@ -99,19 +128,8 @@ async function robloxGiris() {
         await noblox.setCookie(AYARLAR.ROBLOX_COOKIE);
         const botKullanici = await noblox.getAuthenticatedUser();
         console.log(`[Roblox] Başarılı: ${botKullanici.UserName} olarak giriş yapıldı.`);
-        
-        const roller = await noblox.getRoles(AYARLAR.GROUP_ID);
-        const geciciListe = roller.filter(r => r.rank !== 0).map(r => ({
-            name: `${r.name} (ID: ${r.rank})`,
-            value: r.rank
-        })).reverse();
-
-        if (geciciListe.length > 0) {
-            GRUP_RUTBELERI = geciciListe;
-            console.log(`[Roblox] ${GRUP_RUTBELERI.length} adet grup rütbesi başarıyla hafızaya alındı.`);
-        }
     } catch (err) {
-        console.error("[Roblox] Giriş veya rütbe yükleme başarısız:", err.message);
+        console.error("[Roblox] Giriş başarısız:", err.message);
     }
 }
 
@@ -129,7 +147,6 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
         const logEmbed = new EmbedBuilder()
             .setColor('#2b2d31')
             .setTitle('| TSA  |  Karargah')
-            .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
             .setDescription(
                 `**İşlem Başarılı Rütbe Değiştirildi**\n\n` +
                 `**Kullanıcı:** ${robloxUsername}\n` +
@@ -140,13 +157,7 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
             )
             .setThumbnail(avatarUrl);
 
-        const buton = new ButtonBuilder()
-            .setLabel('Kullanıcı Bilgi')
-            .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
-            .setStyle(ButtonStyle.Link);
-
-        const row = new ActionRowBuilder().addComponents(buton);
-        await logKanali.send({ embeds: [logEmbed], components: [row] });
+        await logKanali.send({ embeds: [logEmbed] });
     } catch (e) {
         console.error("[Log Hatası]", e.message);
     }
@@ -154,10 +165,7 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
 
 client.once('ready', async () => {
     console.log(`[Discord] Bot aktif: ${client.user.tag}`);
-    
-    // BOTA OYNUYOR DURUMU EKLEME KODU
     client.user.setActivity('TSA | Turkish Special Army', { type: 0 });
-
     await robloxGiris();
 
     if (!AYARLAR.DISCORD_TOKEN) return;
@@ -165,7 +173,7 @@ client.once('ready', async () => {
     try {
         console.log('[Discord] Slash komutları yükleniyor...');
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('[Discord] Slash komutları dinamik olarak kaydedildi!');
+        console.log('[Discord] Slash komutları başarıyla senkronize edildi!');
     } catch (error) {
         console.error("[Discord Komut Hatası]", error);
     }
@@ -176,9 +184,7 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.commandName === 'rütbe-değiştir') {
             try {
                 const focusedValue = interaction.options.focused().toLowerCase();
-                let filtrelenmis = GRUP_RUTBELERI.filter(choice => 
-                    choice.name.toLowerCase().includes(focusedValue)
-                );
+                let filtrelenmis = GRUP_RUTBELERI.filter(choice => choice.name.toLowerCase().includes(focusedValue));
                 await interaction.respond(filtrelenmis.slice(0, 25));
             } catch (err) {
                 console.error("[Autocomplete Hatası]", err.message);
@@ -189,11 +195,11 @@ client.on('interactionCreate', async (interaction) => {
 
     if (!interaction.isChatInputCommand()) return;
 
-    const { commandName, options, member } = interaction;
+    const { commandName, options, member, guild } = interaction;
     
-    const yetkiliKomutlari = ['rütbe-değiştir', 'terfi', 'tenzil', 'duyuru', 'eğitim-başlat'];
+    const yetkiliKomutlari = ['rütbe-değiştir', 'terfi', 'tenzil', 'duyuru', 'eğitim-başlat', 'grup-listele', 'yasakla'];
     if (yetkiliKomutlari.includes(commandName)) {
-        if (!member.roles.cache.has(AYARLAR.YETKILI_ROL_ID)) {
+        if (!member.roles.cache.has(AYARLAR.YETKILI_ROL_ID) && !member.permissions.has(PermissionFlagsBits.Administrator)) {
             return interaction.reply({ content: '❌ Bu askeri komutu kullanmak için yetkili karargah rolüne sahip değilsiniz.', ephemeral: true });
         }
     }
@@ -201,14 +207,60 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.deferReply();
 
     try {
-        if (commandName === 'rütbe-değiştir') {
+        if (commandName === 'grup-listele') {
+            const username = options.getString('roblox-isim');
+            const userId = await noblox.getIdFromUsername(username);
+            const gruplar = await noblox.getGroups(userId);
+
+            let grupMetni = "";
+            gruplar.forEach((g, index) => {
+                if (index < 20) { 
+                    grupMetni += `• **${g.Name}** — *Rütbe: ${g.Role} (ID: ${g.Rank})*\n`;
+                }
+            });
+
+            if(!grupMetni) grupMetni = "Bu kullanıcı herhangi bir Roblox grubuna üye değil.";
+
+            const grupEmbed = new EmbedBuilder()
+                .setColor('#2b2d31')
+                .setTitle(`📂 ${username} Kullanıcısının Roblox Grupları`)
+                .setDescription(grupMetni.slice(0, 4000))
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [grupEmbed] });
+        }
+
+        else if (commandName === 'yasakla') {
+            const hedefKullanici = options.getUser('kullanıcı');
+            const sebep = options.getString('sebep');
+            const sunucuUyesi = await guild.members.fetch(hedefKullanici.id).catch(() => null);
+
+            if (!sunucuUyesi) {
+                return interaction.editReply("❌ Belirtilen kullanıcı bu sunucuda bulunamadı.");
+            }
+
+            if (!sunucuUyesi.bannable) {
+                return interaction.editReply("❌ Bu kullanıcıyı yasaklamaya botun yetkisi yetmiyor (Rolü botun üstünde olabilir).");
+            }
+
+            await sunucuUyesi.ban({ reason: `${interaction.user.username} tarafından: ${sebep}` });
+
+            const banEmbed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🛑 | ASKERİ YASAKLAMA EMİRNAME')
+                .setDescription(`**Yasaklanan Personel:** ${hedefKullanici.tag} (${hedefKullanici.id})\n**Gerekçe:** ${sebep}\n**Yasaklayan Makam:** ${interaction.user.username}`)
+                .setTimestamp();
+
+            await interaction.editReply(`✅ ${hedefKullanici.tag} başarıyla sunucudan uzaklaştırıldı.`);
+            
+            const logKanali = client.channels.cache.get(AYARLAR.LOG_CHANNEL_ID);
+            if (logKanali) await logKanali.send({ embeds: [banEmbed] });
+        }
+
+        else if (commandName === 'rütbe-değiştir') {
             const username = options.getString('roblox-isim');
             const targetRankId = options.getInteger('rütbe');
             const sebep = options.getString('sebep');
-
-            if (targetRankId === 0) {
-                return interaction.editReply("❌ Geçersiz rütbe seçimi! Lütfen listeden geçerli bir rütbe seçin.");
-            }
 
             const userId = await noblox.getIdFromUsername(username);
             const eskiRutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
