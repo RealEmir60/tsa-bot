@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits } = require('discord.js');
 const noblox = require('noblox.js');
 const http = require('http');
 
@@ -11,7 +11,7 @@ const AYARLAR = {
     OYUN_ID: 138257110169831 
 };
 
-// ==================== 🪖 SABİT RÜTBE LİSTELERİ ====================
+// ==================== 🪖 SABİT RÜTBE LİSTELERİ (KESİN ÇÖZÜM) ====================
 const ER_VE_SUBAY_KADROSU = [
     { name: '[OR-1] Acemi Er', value: 1 },
     { name: '[OR-2] Onbaşı', value: 2 },
@@ -56,7 +56,7 @@ const UST_KOMUTA_VE_YONETIM = [
     { name: 'Grup Sahibi', value: 254 },
     { name: 'TSA', value: 255 }
 ];
-// ===================================================================
+// ===============================================================================
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers]
@@ -211,6 +211,7 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async (interaction) => {
+    // Sadece geçerli chat slash komutlarını dinler, eski autocomplete isteklerini bloke eder.
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName, options, member, guild } = interaction;
@@ -334,17 +335,14 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [profilEmbed] });
         }
 
-        // ==================== 🎯 YENİ VE KESİN DOĞRU RADAR SİSTEMİ ====================
         else if (commandName === 'aktiflik-sorgu') {
             try {
-                // Doğrudan canlı oyun API'sine istek atıp tüm sunuculardaki oyuncuları tek tek sayıyoruz.
+                // Roblox'un canlı oyun trafiğini tutan ana API'sine bağlanıyoruz
                 const url = `https://games.roblox.com/v1/games?universeIds=${AYARLAR.OYUN_ID}`;
-                
-                // Node.js dahili fetch fonksiyonu ile veriyi çekiyoruz
                 const response = await fetch(url);
                 const data = await response.json();
                 
-                // Canlı aktiflik verisini çek, eğer API'den boş dönerse 0 kabul et
+                // Oyundaki tüm aktif sunuculardaki gerçek oyuncu sayısını çekiyoruz
                 const gerçekAktifOyuncu = data.data?.[0]?.playing || 0;
 
                 const oyunEmbed = new EmbedBuilder()
@@ -360,7 +358,6 @@ client.on('interactionCreate', async (interaction) => {
                 await interaction.editReply("❌ Canlı oyuncu verisi şu an Roblox API sunucularından çekilemedi.");
             }
         }
-        // ==============================================================================
 
         else if (commandName === 'grup') {
             await interaction.editReply('🪖 **TSA Roblox Grubu:** https://www.roblox.com/tr/communities/972348115/TSA-Turkish-Armed-Forces-Yeniden');
