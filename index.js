@@ -12,7 +12,7 @@ const AYARLAR = {
     OYUN_ID: process.env.OYUN_ID || "138257110169831"
 };
 
-// ==================== TSA Grubundaki Rütbeler ====================
+// ==================== 🪖 TÜM RÜTBELERİN TAM LİSTESİ ====================
 const TUM_RUTBELER = [
     { name: '[OR-1] Acemi Er', value: 1 },
     { name: '[OR-2] Onbaşı', value: 2 },
@@ -74,7 +74,7 @@ const commands = [
     { name: 'ses-katıl', description: 'Botun, bulunduğunuz aktif askeri ses kanalına bağlanmasını sağlar.' },
     { name: 'ses-ayrıl', description: 'Botun bulunduğu ses kanalından ayrılmasını tetikler.' },
     {
-        name: 'Rütbe-terfi',
+        name: 'terfi',
         description: 'Kullanıcıyı grupta +1 rütbe yükseltir.',
         options: [
             { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true },
@@ -82,7 +82,7 @@ const commands = [
         ]
     },
     {
-        name: 'Rütbe-tenzil',
+        name: 'tenzil',
         description: 'Kullanıcının gruptaki rütbesini -1 derece düşürür.',
         options: [
             { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true },
@@ -104,7 +104,7 @@ const commands = [
         ]
     },
     {
-        name: 'tam-yasakla',
+        name: 'yasakla',
         description: 'Kuralları ihlal eden bir üyeyi sunucudan yasaklar.',
         options: [
             { name: 'kullanıcı', description: 'Yasaklanacak Discord üyesi', type: ApplicationCommandOptionType.User, required: true },
@@ -130,7 +130,7 @@ const commands = [
             { name: 'saat', description: 'Eğitim Saati (Örn: 20:00)', type: ApplicationCommandOptionType.String, required: true }
         ]
     },
-    { name: 'Grup-durum', description: 'TSA grubunun genel durum özetini gösterir.' }
+    { name: 'karargah-durum', description: 'TSA grubunun genel durum özetini gösterir.' }
 ];
 
 async function robloxGiris() {
@@ -144,7 +144,7 @@ async function robloxGiris() {
     }
 }
 
-// ==================== Görsel Logs ====================
+// ==================== 🛠️ GÖRSEL LOG MOTORU (Screenshot_11 Tasarımı) ====================
 async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, yeniRutbe, sebep) {
     try {
         let avatarUrl = "https://www.roblox.com/images/ThumbnailHolder/Player.png";
@@ -158,7 +158,7 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
 
         const logEmbed = new EmbedBuilder()
             .setColor('#3b5998') 
-            .setTitle('Rütbe Başarıyla Değistirildi!')
+            .setTitle('İşlem Başarılı Rütbe Değiştirildi')
             .addFields(
                 { name: 'Kullanıcı', value: `${robloxUsername}`, inline: false },
                 { name: 'İşlem Yapan', value: `${interaction.user.username}`, inline: false },
@@ -216,18 +216,18 @@ client.on('interactionCreate', async (interaction) => {
     const yetkiliKomutlari = ['rütbe-değiştir', 'terfi', 'tenzil', 'duyuru', 'eğitim-başlat', 'grup-listele', 'yasakla', 'ses-katıl', 'ses-ayrıl'];
     if (yetkiliKomutlari.includes(commandName)) {
         if (!member.roles.cache.has(AYARLAR.YETKILI_ROL_ID) && !member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({ content: 'Bu askeri komutu kullanmak için yetkili karargah rolüne sahip olmalısınız.', ephemeral: true });
+            return interaction.reply({ content: '❌ Bu askeri komutu kullanmak için yetkili karargah rolüne sahip olmalısınız.', ephemeral: true });
         }
     }
 
     await interaction.deferReply();
 
     try {
-        // ==================== Ses Kanalı Durum ====================
+        // ==================== 🔊 SES KANALI AKTİVASYONU ====================
         if (commandName === 'ses-katıl') {
             const sesKanali = member.voice.channel;
             if (!sesKanali) {
-                return interaction.editReply(" Botu çağırabilmek için önce kendiniz bir ses kanalına girmelisiniz, komutanım.");
+                return interaction.editReply("❌ Botu çağırabilmek için önce kendiniz bir ses kanalına girmelisiniz, komutanım.");
             }
 
             joinVoiceChannel({
@@ -238,20 +238,20 @@ client.on('interactionCreate', async (interaction) => {
                 selfDeaf: true 
             });
 
-            await interaction.editReply(` **${sesKanali.name}** Ses Kanalına Girdi Ve Aktiflik Kasmaya Başladı`);
+            await interaction.editReply(`🔊 **${sesKanali.name}** kanalına intikal edildi. Nöbet başladı!`);
         }
 
-        else if (commandName === 'Sesten-ayrıl') {
+        else if (commandName === 'ses-ayrıl') {
             const baglanti = getVoiceConnection(guild.id);
             if (!baglanti) {
-                return interaction.editReply(" Karargah botu şu anda herhangi bir ses kanalında aktif değil.");
+                return interaction.editReply("❌ Karargah botu şu anda herhangi bir ses kanalında aktif değil.");
             }
 
             baglanti.destroy();
-            await interaction.editReply("Ses kanalından başarıyla ayrılındı, nöbet tamamlandı.");
+            await interaction.editReply("🛑 Ses kanalından başarıyla ayrılındı, nöbet tamamlandı.");
         }
 
-        // ==================== Rütbe İşlemleri ====================
+        // ==================== 🎖️ RÜTBE VE İDARİ İŞLEMLER ====================
         else if (commandName === 'rütbe-değiştir') {
             const username = options.getString('roblox-isim');
             const targetRankId = options.getInteger('rütbe');
@@ -266,10 +266,10 @@ client.on('interactionCreate', async (interaction) => {
             const yeniRutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
 
             await logGonder(interaction, username, userId, eskiRutbe, yeniRutbe, sebep);
-            await interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2b2d31').setDescription(` **${username}** personeli başarıyla **${yeniRutbe}** Rütbeye atandı.`)] });
+            await interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2b2d31').setDescription(`✅ **${username}** personeli başarıyla **${yeniRutbe}** kadrosuna atandı.`)] });
         }
 
-        else if (commandName === 'Rütbe-terfi') {
+        else if (commandName === 'terfi') {
             const username = options.getString('roblox-isim');
             const sebep = options.getString('sebep');
 
@@ -284,7 +284,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2b2d31').setDescription(`🎖️ **${username}** başarıyla bir üst rütbeye (**${yeniRutbe}**) terfi ettirildi.`)] });
         }
 
-        else if (commandName === 'Rütbe-tenzil') {
+        else if (commandName === 'tenzil') {
             const username = options.getString('roblox-isim');
             const sebep = options.getString('sebep');
 
@@ -299,7 +299,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2b2d31').setDescription(`📉 **${username}** isimli personelin rütbesi **${yeniRutbe}** rütbesine tenzil edildi.`)] });
         }
 
-        // ==================== Aktiflikü-bilgi====================
+        // ==================== 📊 AKILLI AKTİFLİK SORGU MOTORU ====================
         else if (commandName === 'aktiflik-sorgu') {
             try {
                 let inputId = AYARLAR.OYUN_ID.toString().trim();
@@ -322,18 +322,18 @@ client.on('interactionCreate', async (interaction) => {
 
                     const oyunEmbed = new EmbedBuilder()
                         .setColor('#2b2d31')
-                        .setTitle('TSA | Aktiflik Durumu')
-                        .setDescription(`Oyundaki Aktiflik Sayısı:: **${gercekAktifOyuncu}**`)
+                        .setTitle('⚔️ Türk Askeri Oyunu | Canlı Aktiflik Radarı')
+                        .setDescription(`Anlık olarak operasyon bölgesinde bulunan net personel sayısı: **${gercekAktifOyuncu}**`)
                         .setTimestamp()
-                        .setFooter({ text: 'Sistem: Oyun Canlı Aktiflik-rapor Gönderildi' });
+                        .setFooter({ text: 'Sistem: Karargah Canlı Senkronizasyonu Aktif' });
 
                     await interaction.editReply({ embeds: [oyunEmbed] });
                 } else {
-                    await interaction.editReply(" Oyun verileri Roblox sunucularından çekilemedi. Lütfen OYUN_ID değerini kontrol edin.");
+                    await interaction.editReply("❌ Oyun verileri Roblox sunucularından çekilemedi. Lütfen OYUN_ID değerini kontrol edin.");
                 }
             } catch (err) {
                 console.error("[Aktiflik Hatası]", err);
-                await interaction.editReply(` Aktiflik verisi işlenirken teknik bir sorun oluştu: ${err.message}`);
+                await interaction.editReply(`❌ Aktiflik verisi işlenirken teknik bir sorun oluştu: ${err.message}`);
             }
         }
 
@@ -346,7 +346,7 @@ client.on('interactionCreate', async (interaction) => {
 
             const profilEmbed = new EmbedBuilder()
                 .setColor('#2b2d31')
-                .setTitle(`| TSA | Personel Rütbe Bilgisi`)
+                .setTitle(`| TSA | Personel Künye Bilgisi`)
                 .setDescription(`**Kullanıcı Adı:** ${username}\n**Mevcut Rütbe:** ${rankName}`)
                 .setThumbnail(avatarUrl);
 
@@ -369,7 +369,7 @@ client.on('interactionCreate', async (interaction) => {
 
             const grupEmbed = new EmbedBuilder()
                 .setColor('#2b2d31')
-                .setTitle(`${username} Kullanıcısının Roblox Grupları`)
+                .setTitle(`📂 ${username} Kullanıcısının Roblox Grupları`)
                 .setDescription(grupMetni || "Bu kullanıcı herhangi bir Roblox grubuna üye değil.");
 
             await interaction.editReply({ embeds: [grupEmbed] });
@@ -383,14 +383,14 @@ client.on('interactionCreate', async (interaction) => {
             if (!sunucuUyesi || !sunucuUyesi.bannable) return interaction.editReply("❌ Kullanıcı bulunamadı veya botun yetkisi yetersiz.");
 
             await sunucuUyesi.ban({ reason: sebep });
-            await interaction.editReply(`${hedefKullanici.tag} başarıyla sunucudan uzaklaştırıldı.`);
+            await interaction.editReply(`✅ ${hedefKullanici.tag} başarıyla sunucudan uzaklaştırıldı.`);
         }
 
-        else if (commandName === 'Grup') {
-            await interaction.editReply(' **TSA Roblox Grubu:** https://www.roblox.com/tr/communities/972348115/TSA-Turkish-Armed-Forces-Yeniden');
+        else if (commandName === 'grup') {
+            await interaction.editReply('🪖 **TSA Roblox Grubu:** https://www.roblox.com/tr/communities/972348115/TSA-Turkish-Armed-Forces-Yeniden');
         }
 
-        else if (commandName === 'Rütbeler') {
+        else if (commandName === 'rütbeler') {
             const roller = await noblox.getRoles(AYARLAR.GROUP_ID);
             let liste = "";
             roller.reverse().forEach(rol => {
@@ -402,19 +402,19 @@ client.on('interactionCreate', async (interaction) => {
         else if (commandName === 'duyuru') {
             const hedefKanal = options.getChannel('kanal');
             const icerik = options.getString('içerik');
-            await hedefKanal.send({ embeds: [new EmbedBuilder().setColor('#ff0000').setTitle(' | TSA DUYURU').setDescription(icerik)] });
-            await interaction.editReply(`Duyuru iletildi.`);
+            await hedefKanal.send({ embeds: [new EmbedBuilder().setColor('#ff0000').setTitle('📢 | TSA DUYURUSU').setDescription(icerik)] });
+            await interaction.editReply(`✅ Duyuru iletildi.`);
         }
 
         else if (commandName === 'eğitim-başlat') {
             const tur = options.getString('tür');
             const saat = options.getString('saat');
-            await interaction.editReply({ embeds: [new EmbedBuilder().setColor('#e67e22').setTitle(' | TSA EĞİTİM BAŞLANGICI').setDescription(`**Eğitim:** ${tur}\n**Saat:** ${saat}`)] });
+            await interaction.editReply({ embeds: [new EmbedBuilder().setColor('#e67e22').setTitle('⚔️ | TSA EĞİTİM BAŞLANGICI').setDescription(`**Eğitim:** ${tur}\n**Saat:** ${saat}`)] });
         }
 
-        else if (commandName === 'Grup-durum') {
+        else if (commandName === 'karargah-durum') {
             const grupDetay = await noblox.getGroup(AYARLAR.GROUP_ID);
-            await interaction.editReply(` **Toplam Gruptaki Asker Sayısı:** ${grupDetay.memberCount} Asker`);
+            await interaction.editReply(`📊 **Toplam Alay Personeli:** ${grupDetay.memberCount} Asker`);
         }
 
     } catch (error) {
@@ -425,7 +425,7 @@ client.on('interactionCreate', async (interaction) => {
 
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('TSA Karargah \n');
+    res.end('TSA Karargah Sistemi Canli ve Aktif!\n');
 });
 
 const PORT = process.env.PORT || 3000;
