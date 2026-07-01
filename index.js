@@ -1,12 +1,13 @@
-// ==================== 📦 OTOMATİK BAĞIMLILIK KONTROLÜ & LOJİSTİK DESTEK ====================
+// ==================== 📦 OTOMATİK BAĞIMLILIK KONTROLÜ & KALICI YÜKLEME ====================
 const { execSync } = require('child_process');
 try {
     require('@discordjs/voice');
     require('libsodium-wrappers');
 } catch (e) {
-    console.log('[Karargah] Eksik ses modülleri tespit edildi, bulutta otomatik kurulum başlatılıyor...');
+    console.log('[Karargah] Eksik ses modülleri tespit edildi, bulutta kalıcı kurulum başlatılıyor...');
     try {
-        execSync('npm install @discordjs/voice libsodium-wrappers --no-save', { stdio: 'inherit' });
+        // --no-save parametresi kaldırıldı, Render üzerinde kalıcı kurulması sağlandı.
+        execSync('npm install @discordjs/voice libsodium-wrappers', { stdio: 'inherit' });
         console.log('[Karargah] Ses modülleri başarıyla entegre edildi!');
     } catch (err) {
         console.error('[Karargah] Modül yükleme hatası:', err.message);
@@ -14,7 +15,7 @@ try {
 }
 // =========================================================================================
 
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const noblox = require('noblox.js');
 const http = require('http');
@@ -25,7 +26,7 @@ const AYARLAR = {
     GROUP_ID: parseInt(process.env.GROUP_ID) || 972348115, 
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID || "1519328796275380325", 
     YETKILI_ROL_ID: process.env.YETKILI_ROL_ID || "1518357646971764859", 
-    OYUN_ID: process.env.OYUN_ID || "138257110169831" 
+    OYUN_ID: process.env.OYUN_ID || "138257110169831"
 };
 
 // ==================== 🪖 TÜM RÜTBELERİN TAM LİSTESİ ====================
@@ -71,6 +72,7 @@ const TUM_RUTBELER = [
     { name: 'TSA', value: 255 }
 ];
 
+// Discord autocomplete limiti maksimum 25 olduğu için liste üstten kırpılır
 const ILK_25_RUTBE = TUM_RUTBELER.slice(0, 25);
 
 const client = new Client({
@@ -160,6 +162,7 @@ async function robloxGiris() {
     }
 }
 
+// ==================== 🛠️ GÖRSEL LOG MOTORU (SCREENSHOT_11 MAKETİ) ====================
 async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, yeniRutbe, sebep) {
     try {
         let avatarUrl = "https://www.roblox.com/images/ThumbnailHolder/Player.png";
@@ -169,10 +172,11 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
         } catch (e) {}
 
         const logKanali = client.channels.cache.get(AYARLAR.LOG_CHANNEL_ID);
-        if (!logKanali) return;
+        if (!logKanali) return null;
 
+        // İstediğin görseldeki (Screenshot_11.png) birebir tasarım kalıbı:
         const logEmbed = new EmbedBuilder()
-            .setColor('#3b5998') 
+            .setColor('#3b5998') // Görseldeki lacivert/mavi ton
             .setTitle('İşlem Başarılı Rütbe Değiştirildi')
             .addFields(
                 { name: 'Kullanıcı', value: `${robloxUsername}`, inline: false },
@@ -181,7 +185,8 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
                 { name: 'Yeni Rütbe', value: `${yeniRutbe}`, inline: false },
                 { name: 'Sebep', value: `${sebep || 'Belirtilmedi'}`, inline: false }
             )
-            .setThumbnail(avatarUrl);
+            .setThumbnail(avatarUrl)
+            .setTimestamp();
 
         const butonRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -190,18 +195,17 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
                 .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
         );
 
-        await logKanali.send({ embeds: [logEmbed], components: [butonRow] });
+        const gonderilenMesaj = await logKanali.send({ embeds: [logEmbed], components: [butonRow] });
+        return gonderilenMesaj;
     } catch (e) {
         console.error("[Log Hatası]", e.message);
+        return null;
     }
 }
 
 client.once('ready', async () => {
     console.log(`[Discord] Bot aktif: ${client.user.tag}`);
-    
-    // ⚔️ HEDEF DÜZELTME: "TSA | Turkish Special Army Oynuyor" Aktivitesi Netleştirildi.
-    client.user.setActivity('TSA | Turkish Special Army', { type: ActivityType.Playing });
-    
+    client.user.setActivity('TSA | Karargah Radarı', { type: 0 });
     await robloxGiris();
 
     if (!AYARLAR.DISCORD_TOKEN) return;
@@ -232,13 +236,14 @@ client.on('interactionCreate', async (interaction) => {
     const yetkiliKomutlari = ['rütbe-değiştir', 'terfi', 'tenzil', 'duyuru', 'eğitim-başlat', 'grup-listele', 'yasakla', 'ses-katıl', 'ses-ayrıl'];
     if (yetkiliKomutlari.includes(commandName)) {
         if (!member.roles.cache.has(AYARLAR.YETKILI_ROL_ID) && !member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({ content: '❌ Bu askeri komutu kullanmak için yetkili karargah rolüne sahip değilsiniz.', ephemeral: true });
+            return interaction.reply({ content: '❌ Bu askeri komutu kullanmak için yetkili karargah rolüne sahip olmalısınız.', ephemeral: true });
         }
     }
 
     await interaction.deferReply();
 
     try {
+        // ==================== 🔊 SES KANALI AKTİVASYONU ====================
         if (commandName === 'ses-katıl') {
             const sesKanali = member.voice.channel;
             if (!sesKanali) {
@@ -266,6 +271,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply("🛑 Ses kanalından başarıyla ayrılındı, nöbet tamamlandı.");
         }
 
+        // ==================== 🎖️ RÜTBE VE İDARİ İŞLEMLER ====================
         else if (commandName === 'rütbe-değiştir') {
             const username = options.getString('roblox-isim');
             const targetRankId = options.getInteger('rütbe');
@@ -279,7 +285,10 @@ client.on('interactionCreate', async (interaction) => {
             await new Promise(resolve => setTimeout(resolve, 1500));
             const yeniRutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
 
+            // Log kanalına Screenshot_11 stilinde mesaj yolluyoruz
             await logGonder(interaction, username, userId, eskiRutbe, yeniRutbe, sebep);
+            
+            // Komutun çağrıldığı kanala da başarı yanıtı dönüyoruz
             await interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2b2d31').setDescription(`✅ **${username}** personeli başarıyla **${yeniRutbe}** kadrosuna atandı.`)] });
         }
 
@@ -313,44 +322,42 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2b2d31').setDescription(`📉 **${username}** isimli personelin rütbesi **${yeniRutbe}** rütbesine tenzil edildi.`)] });
         }
 
+        // ==================== 📊 AKILLI AKTİFLİK SORGU MOTORU ====================
         else if (commandName === 'aktiflik-sorgu') {
             try {
-                let inputId = AYARLAR.OYUN_ID.trim();
-                let nihaiUniverseId = inputId;
-
-                let url = `https://games.roblox.com/v1/games?universeIds=${inputId}`;
-                let response = await fetch(url);
-                let data = await response.json();
-
-                if (!data || !data.data || data.data.length === 0) {
-                    const ceviriciUrl = `https://apis.roblox.com/universes/v1/places/${inputId}/universe`;
-                    const ceviriciRes = await fetch(ceviriciUrl);
-                    const ceviriciData = await ceviriciRes.json();
-                    
-                    if (ceviriciData && ceviriciData.universeId) {
-                        nihaiUniverseId = ceviriciData.universeId;
-                        url = `https://games.roblox.com/v1/games?universeIds=${nihaiUniverseId}`;
-                        response = await fetch(url);
-                        data = await response.json();
-                    }
-                }
+                let inputId = AYARLAR.OYUN_ID.toString().trim();
                 
-                let gercekAktifOyuncu = 0;
-                if(data && data.data && data.data[0]) {
-                    gercekAktifOyuncu = data.data[0].playing || 0;
+                // Kapsamlı Dönüştürücü Bridge API Çağrısı (Place ID -> Universe ID)
+                const ceviriciUrl = `https://apis.roblox.com/universes/v1/places/${inputId}/universe`;
+                const ceviriciRes = await fetch(ceviriciUrl);
+                const ceviriciData = await ceviriciRes.json();
+                
+                let universeId = inputId;
+                if (ceviriciData && ceviriciData.universeId) {
+                    universeId = ceviriciData.universeId;
                 }
 
-                const oyunEmbed = new EmbedBuilder()
-                    .setColor('#2b2d31')
-                    .setTitle('⚔️ Türk Askeri Oyunu | Canlı Aktiflik Radarı')
-                    .setDescription(`Anlık olarak operasyon bölgesinde bulunan net personel sayısı: **${gercekAktifOyuncu}**`)
-                    .setTimestamp()
-                    .setFooter({ text: `Sistem: Akıllı Kimlik Doğrulaması Aktif` });
+                const url = `https://games.roblox.com/v1/games?universeIds=${universeId}`;
+                const response = await fetch(url);
+                const data = await response.json();
 
-                await interaction.editReply({ embeds: [oyunEmbed] });
+                if (data && data.data && data.data.length > 0) {
+                    const gercekAktifOyuncu = data.data[0].playing || 0;
+
+                    const oyunEmbed = new EmbedBuilder()
+                        .setColor('#2b2d31')
+                        .setTitle('⚔️ Türk Askeri Oyunu | Canlı Aktiflik Radarı')
+                        .setDescription(`Anlık olarak operasyon bölgesinde bulunan net personel sayısı: **${gercekAktifOyuncu}**`)
+                        .setTimestamp()
+                        .setFooter({ text: 'Sistem: Karargah Canlı Senkronizasyonu Aktif' });
+
+                    await interaction.editReply({ embeds: [oyunEmbed] });
+                } else {
+                    await interaction.editReply("❌ Oyun verileri Roblox sunucularından çekilemedi. Lütfen OYUN_ID değerini kontrol edin.");
+                }
             } catch (err) {
                 console.error("[Aktiflik Hatası]", err);
-                await interaction.editReply("❌ Canlı oyuncu verisi şu an Roblox API sunucularından çekilemedi.");
+                await interaction.editReply(`❌ Aktiflik verisi işlenirken teknik bir sorun oluştu: ${err.message}`);
             }
         }
 
