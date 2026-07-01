@@ -24,5 +24,7 @@ client.on("messageCreate", (message) => {
     message.reply("Rütbe sistemi yakında aktif olacak.");
   }
 });
-
 client.login(process.env.TOKEN);
+setInterval(() => {
+  console.log("TSA bot aktif...");
+}, 60000);
