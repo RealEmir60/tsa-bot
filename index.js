@@ -1,5 +1,21 @@
+// ==================== 📦 OTOMATİK BAĞIMLILIK KONTROLÜ & LOJİSTİK DESTEK ====================
+const { execSync } = require('child_process');
+try {
+    require('@discordjs/voice');
+    require('libsodium-wrappers');
+} catch (e) {
+    console.log('[Karargah] Eksik ses modülleri tespit edildi, bulutta otomatik kurulum başlatılıyor...');
+    try {
+        execSync('npm install @discordjs/voice libsodium-wrappers --no-save', { stdio: 'inherit' });
+        console.log('[Karargah] Ses modülleri başarıyla entegre edildi!');
+    } catch (err) {
+        console.error('[Karargah] Modül yükleme hatası:', err.message);
+    }
+}
+// =========================================================================================
+
 const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice'); // Ses entegrasyon kütüphanesi
+const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const noblox = require('noblox.js');
 const http = require('http');
 
@@ -9,7 +25,7 @@ const AYARLAR = {
     GROUP_ID: parseInt(process.env.GROUP_ID) || 972348115, 
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID || "1519328796275380325", 
     YETKILI_ROL_ID: process.env.YETKILI_ROL_ID || "1518357646971764859", 
-    OYUN_ID: 138257110169831 
+    OYUN_ID: process.env.OYUN_ID || "138257110169831" // .env dosyasından çekilen dinamik değer
 };
 
 // ==================== 🪖 TÜM RÜTBELERİN TAM LİSTESİ ====================
@@ -57,7 +73,6 @@ const TUM_RUTBELER = [
 
 const ILK_25_RUTBE = TUM_RUTBELER.slice(0, 25);
 
-// Geliştirilmiş Intents Listesi (Ses takibi aktif)
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildVoiceStates]
 });
@@ -72,14 +87,8 @@ const commands = [
             { name: 'sebep', description: 'İşlem gerekçesi', type: ApplicationCommandOptionType.String, required: true }
         ]
     },
-    {
-        name: 'ses-katıl',
-        description: 'Botun, bulunduğunuz aktif askeri ses kanalına bağlanmasını sağlar.'
-    },
-    {
-        name: 'ses-ayrıl',
-        description: 'Botun bulunduğu ses kanalından ayrılmasını tetikler.'
-    },
+    { name: 'ses-katıl', description: 'Botun, bulunduğunuz aktif askeri ses kanalına bağlanmasını sağlar.' },
+    { name: 'ses-ayrıl', description: 'Botun bulunduğu ses kanalından ayrılmasını tetikler.' },
     {
         name: 'terfi',
         description: 'Kullanıcıyı grupta +1 rütbe yükseltir.',
@@ -163,7 +172,6 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
         const logKanali = client.channels.cache.get(AYARLAR.LOG_CHANNEL_ID);
         if (!logKanali) return;
 
-        // Screenshot_11.png görselindeki asil nizam
         const logEmbed = new EmbedBuilder()
             .setColor('#3b5998') 
             .setTitle('İşlem Başarılı Rütbe Değiştirildi')
@@ -176,7 +184,6 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
             )
             .setThumbnail(avatarUrl);
 
-        // GUI Buton Grubu (Screenshot_11.png prototipi)
         const butonRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setLabel('Kullanıcı Bilgi')
@@ -223,7 +230,7 @@ client.on('interactionCreate', async (interaction) => {
     const yetkiliKomutlari = ['rütbe-değiştir', 'terfi', 'tenzil', 'duyuru', 'eğitim-başlat', 'grup-listele', 'yasakla', 'ses-katıl', 'ses-ayrıl'];
     if (yetkiliKomutlari.includes(commandName)) {
         if (!member.roles.cache.has(AYARLAR.YETKILI_ROL_ID) && !member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({ content: '❌ Bu askeri komutu kullanmak için yetkili karargah rolüne sahip değilsiniz.', ephemeral: true });
+            return interaction.reply({ content: '❌ Bu askeri komutu kullanmak için yetkili karargah rolüne sahip diziniz.', ephemeral: true });
         }
     }
 
@@ -269,7 +276,6 @@ client.on('interactionCreate', async (interaction) => {
             
             await noblox.setRank(AYARLAR.GROUP_ID, userId, targetRankId);
             
-            // Senkronizasyon Kaymasını Önleyen Geciktirici Es
             await new Promise(resolve => setTimeout(resolve, 1500));
             const yeniRutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
 
@@ -309,9 +315,28 @@ client.on('interactionCreate', async (interaction) => {
 
         else if (commandName === 'aktiflik-sorgu') {
             try {
-                const url = `https://games.roblox.com/v1/games?universeIds=${AYARLAR.OYUN_ID}`;
-                const response = await fetch(url);
-                const data = await response.json();
+                let inputId = AYARLAR.OYUN_ID.trim();
+                let nihaiUniverseId = inputId;
+
+                // 🚨 AKILLI DOĞRULAMA: Girdi bir Place ID mi yoksa Universe ID mi?
+                // Eğer doğrudan sorgulama yapıldığında veri gelmezse, Place ID girilmiştir mantığıyla dönüştürücü tetiklenir.
+                let url = `https://games.roblox.com/v1/games?universeIds=${inputId}`;
+                let response = await fetch(url);
+                let data = await response.json();
+
+                if (!data || !data.data || data.data.length === 0) {
+                    // Place ID'yi Universe ID'ye çeviren yedek köprü API'si devreye giriyor
+                    const ceviriciUrl = `https://apis.roblox.com/universes/v1/places/${inputId}/universe`;
+                    const ceviriciRes = await fetch(ceviriciUrl);
+                    const ceviriciData = await ceviriciRes.json();
+                    
+                    if (ceviriciData && ceviriciData.universeId) {
+                        nihaiUniverseId = ceviriciData.universeId;
+                        url = `https://games.roblox.com/v1/games?universeIds=${nihaiUniverseId}`;
+                        response = await fetch(url);
+                        data = await response.json();
+                    }
+                }
                 
                 let gercekAktifOyuncu = 0;
                 if(data && data.data && data.data[0]) {
@@ -323,11 +348,12 @@ client.on('interactionCreate', async (interaction) => {
                     .setTitle('⚔️ Türk Askeri Oyunu | Canlı Aktiflik Radarı')
                     .setDescription(`Anlık olarak operasyon bölgesinde bulunan net personel sayısı: **${gercekAktifOyuncu}**`)
                     .setTimestamp()
-                    .setFooter({ text: "Sistem: Canlı Sunucu Doğrulaması Aktif" });
+                    .setFooter({ text: `Sistem: Akıllı Kimlik Doğrulaması Aktif` });
 
                 await interaction.editReply({ embeds: [oyunEmbed] });
             } catch (err) {
-                await interaction.editReply("❌ Canlı oyuncu verisi şu an Roblox API sunucularından çekilemedi.");
+                console.error("[Aktiflik Hatası]", err);
+                await interaction.editReply("❌ Canlı oyuncu verisi şu an Roblox API sunucularından çekilemedi. Lütfen ENV kısmındaki OYUN_ID değerini kontrol edin.");
             }
         }
 
