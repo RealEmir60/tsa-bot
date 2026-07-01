@@ -1,48 +1,68 @@
-const { Client, GatewayIntentBits } = require("discord.js");
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require("discord.js");
 const express = require("express");
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.GuildMessages
   ]
 });
 
-// Render açık kalsın diye
+// Keep alive
 const app = express();
 app.get("/", (req, res) => res.send("TSA BOT AKTİF"));
 app.listen(3000);
 
-client.on("ready", () => {
+// SLASH KOMUTLAR
+const commands = [
+  new SlashCommandBuilder()
+    .setName("ping")
+    .setDescription("Botu test eder"),
+
+  new SlashCommandBuilder()
+    .setName("duyuru")
+    .setDescription("Duyuru gönderir")
+    .addStringOption(option =>
+      option.setName("mesaj")
+        .setDescription("Duyuru mesajı")
+        .setRequired(true)
+    )
+].map(cmd => cmd.toJSON());
+
+// BOT READY
+client.once("ready", async () => {
   console.log(`BOT GİRİŞ YAPTI: ${client.user.tag}`);
+
+  const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+
+  await rest.put(
+    Routes.applicationCommands(client.user.id),
+    { body: commands }
+  );
+
+  console.log("Slash komutlar yüklendi");
 });
 
-client.on("messageCreate", (message) => {
-  if (message.author.bot) return;
+// SLASH KOMUTLAR ÇALIŞTIRMA
+client.on("interactionCreate", async interaction => {
+  if (!interaction.isChatInputCommand()) return;
 
-  if (message.content === "!ping") {
-    message.reply("TSA sistem aktif ✔");
+  if (interaction.commandName === "ping") {
+    await interaction.reply("TSA sistem aktif ✔");
   }
 
-  if (message.content.startsWith("!duyuru ")) {
-    if (!message.member.permissions.has("Administrator")) {
-      return message.reply("Yetkin yok!");
+  if (interaction.commandName === "duyuru") {
+    const msg = interaction.options.getString("mesaj");
+
+    await interaction.reply(`📢 Duyuru gönderildi: ${msg}`);
+
+    const logChannel = interaction.guild.channels.cache.find(
+      c => c.name === "log"
+    );
+
+    if (logChannel) {
+      logChannel.send(`📌 Duyuru: ${msg}`);
     }
-
-    const msg = message.content.slice(9);
-    message.channel.send(`📢 TSA DUYURU: ${msg}`);
-  }
-
-  if (message.content.startsWith("!rütbe ")) {
-    const user = message.mentions.users.first();
-    const rank = message.content.split(" ")[2];
-
-    if (!user || !rank) {
-      return message.reply("Kullanım: !rütbe @kullanıcı rütbe");
-    }
-
-    message.channel.send(`📌 ${user.tag} için yeni rütbe: **${rank}**`);
   }
 });
 
