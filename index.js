@@ -1,20 +1,3 @@
-// ==================== 📦 OTOMATİK BAĞIMLILIK KONTROLÜ & KALICI YÜKLEME ====================
-const { execSync } = require('child_process');
-try {
-    require('@discordjs/voice');
-    require('libsodium-wrappers');
-} catch (e) {
-    console.log('[Karargah] Eksik ses modülleri tespit edildi, bulutta kalıcı kurulum başlatılıyor...');
-    try {
-        // --no-save parametresi kaldırıldı, Render üzerinde kalıcı kurulması sağlandı.
-        execSync('npm install @discordjs/voice libsodium-wrappers', { stdio: 'inherit' });
-        console.log('[Karargah] Ses modülleri başarıyla entegre edildi!');
-    } catch (err) {
-        console.error('[Karargah] Modül yükleme hatası:', err.message);
-    }
-}
-// =========================================================================================
-
 const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const noblox = require('noblox.js');
@@ -72,7 +55,6 @@ const TUM_RUTBELER = [
     { name: 'TSA', value: 255 }
 ];
 
-// Discord autocomplete limiti maksimum 25 olduğu için liste üstten kırpılır
 const ILK_25_RUTBE = TUM_RUTBELER.slice(0, 25);
 
 const client = new Client({
@@ -162,7 +144,7 @@ async function robloxGiris() {
     }
 }
 
-// ==================== 🛠️ GÖRSEL LOG MOTORU (SCREENSHOT_11 MAKETİ) ====================
+// ==================== 🛠️ GÖRSEL LOG MOTORU (Screenshot_11 Tasarımı) ====================
 async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, yeniRutbe, sebep) {
     try {
         let avatarUrl = "https://www.roblox.com/images/ThumbnailHolder/Player.png";
@@ -174,9 +156,8 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
         const logKanali = client.channels.cache.get(AYARLAR.LOG_CHANNEL_ID);
         if (!logKanali) return null;
 
-        // İstediğin görseldeki (Screenshot_11.png) birebir tasarım kalıbı:
         const logEmbed = new EmbedBuilder()
-            .setColor('#3b5998') // Görseldeki lacivert/mavi ton
+            .setColor('#3b5998') 
             .setTitle('İşlem Başarılı Rütbe Değiştirildi')
             .addFields(
                 { name: 'Kullanıcı', value: `${robloxUsername}`, inline: false },
@@ -195,8 +176,7 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
                 .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
         );
 
-        const gonderilenMesaj = await logKanali.send({ embeds: [logEmbed], components: [butonRow] });
-        return gonderilenMesaj;
+        return await logKanali.send({ embeds: [logEmbed], components: [butonRow] });
     } catch (e) {
         console.error("[Log Hatası]", e.message);
         return null;
@@ -285,10 +265,7 @@ client.on('interactionCreate', async (interaction) => {
             await new Promise(resolve => setTimeout(resolve, 1500));
             const yeniRutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
 
-            // Log kanalına Screenshot_11 stilinde mesaj yolluyoruz
             await logGonder(interaction, username, userId, eskiRutbe, yeniRutbe, sebep);
-            
-            // Komutun çağrıldığı kanala da başarı yanıtı dönüyoruz
             await interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2b2d31').setDescription(`✅ **${username}** personeli başarıyla **${yeniRutbe}** kadrosuna atandı.`)] });
         }
 
@@ -327,7 +304,6 @@ client.on('interactionCreate', async (interaction) => {
             try {
                 let inputId = AYARLAR.OYUN_ID.toString().trim();
                 
-                // Kapsamlı Dönüştürücü Bridge API Çağrısı (Place ID -> Universe ID)
                 const ceviriciUrl = `https://apis.roblox.com/universes/v1/places/${inputId}/universe`;
                 const ceviriciRes = await fetch(ceviriciUrl);
                 const ceviriciData = await ceviriciRes.json();
