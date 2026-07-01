@@ -1,5 +1,6 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits } = require('discord.js');
 const noblox = require('noblox.js');
+const http = require('http');
 
 // ==================== AYARLAR BÖLÜMÜ ====================
 const AYARLAR = {
@@ -7,8 +8,8 @@ const AYARLAR = {
     ROBLOX_COOKIE: "ROBLOX_ROBLESSECURITY_CEREZI", 
     GROUP_ID: 972348115, // TSA Grubu ID'si
     LOG_CHANNEL_ID: "LOG_MESAJININ_GIDECEGI_KANAL_ID",
-    YETKILI_ROL_ID: "1518357646971764859", // Sadece bu rol komutları görebilir ve kullanabilir
-    OYUN_ID: 138257110169831 // Türk Askeri Oyunu Evren ID'si
+    YETKILI_ROL_ID: "1518357646971764859", // Yetkili Rol ID
+    OYUN_ID: 138257110169831 // Türk Askeri Oyunu ID
 };
 // =======================================================
 
@@ -16,12 +17,11 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
-// Slash Komut Tanımlamaları
+// Tüm Slash Komut Tanımlamaları
 const commands = [
     {
         name: 'rütbe-değiştir',
         description: 'Belirtilen Roblox kullanıcısının rütbesini değiştirir.',
-        default_member_permissions: PermissionFlagsBits.UseApplicationCommands, // Varsayılan izin kilidi
         options: [
             { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true },
             { name: 'rütbe', description: 'Değiştirilmek istenen yeni rütbe ID (Örn: 30)', type: ApplicationCommandOptionType.Integer, required: true },
@@ -31,7 +31,6 @@ const commands = [
     {
         name: 'terfi',
         description: 'Kullanıcıyı grupta +1 rütbe yükseltir.',
-        default_member_permissions: PermissionFlagsBits.UseApplicationCommands,
         options: [
             { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true },
             { name: 'sebep', description: 'Terfi sebebi', type: ApplicationCommandOptionType.String, required: true }
@@ -40,10 +39,16 @@ const commands = [
     {
         name: 'tenzil',
         description: 'Kullanıcının gruptaki rütbesini -1 derece düşürür.',
-        default_member_permissions: PermissionFlagsBits.UseApplicationCommands,
         options: [
             { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true },
             { name: 'sebep', description: 'Tenzil sebebi', type: ApplicationCommandOptionType.String, required: true }
+        ]
+    },
+    {
+        name: 'profile',
+        description: 'Belirtilen personelin rütbe, grup ve Roblox bilgilerini getirir.',
+        options: [
+            { name: 'roblox-isim', description: 'Bilgilerine bakılacak Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true }
         ]
     },
     {
@@ -65,6 +70,18 @@ const commands = [
             { name: 'kanal', description: 'Duyurunun atılacağı kanal', type: ApplicationCommandOptionType.Channel, required: true },
             { name: 'içerik', description: 'Duyuru metni', type: ApplicationCommandOptionType.String, required: true }
         ]
+    },
+    {
+        name: 'eğitim-başlat',
+        description: 'Karargah bünyesinde resmi bir eğitim duyurusu başlatır.',
+        options: [
+            { name: 'tür', description: 'Eğitim Türü (Örn: Formasyon, Atış, Disiplin)', type: ApplicationCommandOptionType.String, required: true },
+            { name: 'saat', description: 'Eğitim Saati (Örn: 20:00)', type: ApplicationCommandOptionType.String, required: true }
+        ]
+    },
+    {
+        name: 'karargah-durum',
+        description: 'TSA grubunun genel ve lojistik durum özetini gösterir.'
     }
 ];
 
@@ -79,7 +96,7 @@ async function robloxGiris() {
     }
 }
 
-// Ortak Log Gönderme Fonksiyonu
+// Ortak Log Gönderme Fonksiyonu (Screenshot_10.png Stili)
 async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, yeniRutbe, sebep) {
     const avatarResmi = await noblox.getPlayerThumbnail(robloxUserId, "150x150", "png", false, "Headshot");
     const avatarUrl = avatarResmi[0]?.imageUrl || "https://www.roblox.com/images/ThumbnailHolder/Player.png";
@@ -126,7 +143,7 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(AYARLAR.DISCORD_TOKEN);
     try {
         console.log('[Discord] Slash komutları güncelleniyor...');
-        const registeredCommands = await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
         console.log('[Discord] Slash komutları başarıyla API\'ye kaydedildi!');
     } catch (error) {
         console.error(error);
@@ -137,12 +154,12 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName, options, member } = interaction;
-    const askeriKomutlar = ['rütbe-değiştir', 'terfi', 'tenzil'];
-
-    // Arka Plandaki Sıkı Kod Yetki Kontrolü
-    if (askeriKomutlar.includes(commandName)) {
+    
+    // Yetkili Rol Kısıtlaması Gerektiren Komutlar
+    const yetkiliKomutlari = ['rütbe-değiştir', 'terfi', 'tenzil', 'duyuru', 'eğitim-başlat'];
+    if (yetkiliKomutlari.includes(commandName)) {
         if (!member.roles.cache.has(AYARLAR.YETKILI_ROL_ID)) {
-            return interaction.reply({ content: '❌ Bu askeri işlemi gerçekleştirmek için yetkili karargah rolüne sahip değilsiniz.', ephemeral: true });
+            return interaction.reply({ content: '❌ Bu askeri komutu kullanmak için yetkili karargah rolüne sahip değilsiniz.', ephemeral: true });
         }
     }
 
@@ -190,6 +207,41 @@ client.on('interactionCreate', async (interaction) => {
 
             await logGonder(interaction, username, userId, eskiRutbe, yeniRutbe, sebep);
             await interaction.editReply(`📉 **${username}** isimli personelin rütbesi **${yeniRutbe}** rütbesine tenzil edildi.`);
+        }
+
+        else if (commandName === 'profile') {
+            const username = options.getString('roblox-isim');
+            const userId = await noblox.getIdFromUsername(username);
+            
+            // Tüm bilgileri paralel olarak çekiyoruz
+            const [playerInfo, rankName, rankId, avatarResmi] = await Promise.all([
+                noblox.getPlayerInfo(userId),
+                noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId),
+                noblox.getRankInGroup(AYARLAR.GROUP_ID, userId),
+                noblox.getPlayerThumbnail(userId, "150x150", "png", false, "Headshot")
+            ]);
+
+            const avatarUrl = avatarResmi[0]?.imageUrl || "https://www.roblox.com/images/ThumbnailHolder/Player.png";
+
+            const profilEmbed = new EmbedBuilder()
+                .setColor('#2b2d31')
+                .setTitle(`| TSA | Personel Künye Bilgisi`)
+                .setDescription(
+                    `**Kullanıcı Adı:** ${username}\n` +
+                    `**Roblox ID:** ${userId}\n` +
+                    `**Mevcut Rütbe:** ${rankName} (ID: ${rankId})\n\n` +
+                    `**Hesap Yaşı:** ${playerInfo.age} Gün\n` +
+                    `**Gruba Katılım:** ${playerInfo.joinDate ? new Date(playerInfo.joinDate).toLocaleDateString('tr-TR') : 'Bilinmiyor'}`
+                )
+                .setThumbnail(avatarUrl);
+
+            const buton = new ButtonBuilder()
+                .setLabel('Roblox Profilini Aç')
+                .setURL(`https://www.roblox.com/users/${userId}/profile`)
+                .setStyle(ButtonStyle.Link);
+
+            const row = new ActionRowBuilder().addComponents(buton);
+            await interaction.editReply({ embeds: [profilEmbed], components: [row] });
         }
 
         else if (commandName === 'aktiflik-sorgu') {
@@ -247,10 +299,55 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Duyuru başarıyla ${hedefKanal} kanalına iletildi.`);
         }
 
+        else if (commandName === 'eğitim-başlat') {
+            const tur = options.getString('tür');
+            const saat = options.getString('saat');
+
+            const egitemEmbed = new EmbedBuilder()
+                .setColor('#e67e22')
+                .setTitle('⚔️ | TSA EĞİTİM VE DOKTRİN KOMUTANLIĞI')
+                .setDescription(
+                    `**Eğitim Türü:** ${tur}\n` +
+                    `**Başlangıç Saati:** ${saat}\n\n` +
+                    `Tüm personelin belirtilen saatte hazır kıta olması önemle rica olunur. Disiplinsizlik gösterenler hakkında yasal işlem başlatılacaktır.`
+                )
+                .setTimestamp()
+                .setFooter({ text: `Eğitimi Yöneten: ${interaction.user.username}` });
+
+            await interaction.editReply({ embeds: [egitemEmbed] });
+        }
+
+        else if (commandName === 'karargah-durum') {
+            const grupDetay = await noblox.getGroup(AYARLAR.GROUP_ID);
+            
+            const durumEmbed = new EmbedBuilder()
+                .setColor('#2b2d31')
+                .setTitle('| TSA | Karargah Lojistik Raporu')
+                .setDescription(
+                    `📊 **Toplam Alay Personeli:** ${grupDetay.memberCount} Asker\n` +
+                    `🛡️ **Grup Durumu:** Aktif ve Göreve Hazır\n` +
+                    `🔗 **Resmi Bağlantı:** [Roblox TSA Grubu](https://www.roblox.com/tr/communities/972348115/TSA-Turkish-Armed-Forces-Yeniden#!/about)`
+                )
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [durumEmbed] });
+        }
+
     } catch (error) {
         console.error(error);
         await interaction.editReply(`❌ İşlem gerçekleştirilirken bir hata oluştu: ${error.message}`);
     }
+});
+
+// ====== RENDER İÇİN PORT DİNLEYİCİSİ ======
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('TSA Karargah Botu Aktif!\n');
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`[Render] Port ${PORT} üzerinden dinleniyor.`);
 });
 
 client.login(AYARLAR.DISCORD_TOKEN);
