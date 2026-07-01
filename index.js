@@ -350,4 +350,3 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-client.login(AYARLAR.DISCORD_TOKEN);
