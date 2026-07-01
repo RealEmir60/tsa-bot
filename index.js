@@ -12,15 +12,16 @@ app.use(express.json());
 // 🌐 ENV
 const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
-const BACKEND_URL = process.env.BACKEND_URL;
+
+// 🏷 SABİTLER
 const PLACE_ID = "138257110169831";
 const GROUP_LINK =
   "https://www.roblox.com/tr/communities/972348115/TSA-Turkish-Armed-Forces-Yeniden";
 
-// 🚀 BOT WEB SERVER (Render açık kalsın diye)
+// 🚀 WEB SERVER (Render açık kalsın)
 app.get("/", (req, res) => res.send("TSA BOT AKTİF"));
 
-// 🔥 BACKEND (ROBLOX RÜTBE)
+// 🔥 RÜTBE API (BOT + SERVER AYNI DOSYA)
 app.post("/rank", async (req, res) => {
   const API_KEY = process.env.ROBLOX_API_KEY;
   const GROUP_ID = "972348115";
@@ -50,25 +51,29 @@ app.post("/rank", async (req, res) => {
   }
 });
 
-app.listen(3000, () => console.log("WEB + BACKEND AKTİF"));
+app.listen(3000, () => console.log("SERVER AKTİF"));
 
 // 📌 SLASH KOMUTLAR
 const commands = [
-  new SlashCommandBuilder().setName("aktiflik-sorgula").setDescription("Oyuncu sayısı"),
+  new SlashCommandBuilder()
+    .setName("aktiflik-sorgula")
+    .setDescription("Oyundaki oyuncu sayısını gösterir"),
 
-  new SlashCommandBuilder().setName("grup").setDescription("Grup linki"),
+  new SlashCommandBuilder()
+    .setName("grup")
+    .setDescription("Grup linkini gösterir"),
 
   new SlashCommandBuilder()
     .setName("terfi")
     .addStringOption(o => o.setName("user").setRequired(true))
     .addStringOption(o => o.setName("sebep").setRequired(true))
-    .setDescription("Terfi"),
+    .setDescription("Terfi işlemi"),
 
   new SlashCommandBuilder()
     .setName("tenzil")
     .addStringOption(o => o.setName("user").setRequired(true))
     .addStringOption(o => o.setName("sebep").setRequired(true))
-    .setDescription("Tenzil"),
+    .setDescription("Tenzil işlemi"),
 
   new SlashCommandBuilder()
     .setName("rütbe-değiştir")
@@ -78,7 +83,7 @@ const commands = [
     .setDescription("Rütbe değiştir")
 ].map(c => c.toJSON());
 
-// 🚀 READY
+// 🚀 BOT READY
 client.once("ready", async () => {
   const rest = new REST({ version: "10" }).setToken(TOKEN);
 
@@ -87,7 +92,7 @@ client.once("ready", async () => {
     { body: commands }
   );
 
-  console.log("BOT READY");
+  console.log(`BOT GİRİŞ YAPTI: ${client.user.tag}`);
 });
 
 // 🎮 ROBLOX AKTİFLİK
@@ -100,35 +105,40 @@ async function getPlayers() {
 }
 
 // 📌 KOMUTLAR
-client.on("interactionCreate", async i => {
-  if (!i.isChatInputCommand()) return;
+client.on("interactionCreate", async interaction => {
+  if (!interaction.isChatInputCommand()) return;
 
-  if (i.commandName === "aktiflik-sorgula") {
+  // AKTİFLİK
+  if (interaction.commandName === "aktiflik-sorgula") {
     const count = await getPlayers();
-    return i.reply(`🎮 Oyunda **${count} kişi** var`);
+    return interaction.reply(`🎮 Oyunda **${count} kişi** var`);
   }
 
-  if (i.commandName === "grup") {
-    return i.reply(`🏷 ${GROUP_LINK}`);
+  // GRUP
+  if (interaction.commandName === "grup") {
+    return interaction.reply(`🏷 ${GROUP_LINK}`);
   }
 
-  if (["terfi", "tenzil", "rütbe-değiştir"].includes(i.commandName)) {
-    const user = i.options.getString("user");
-    const rank = i.options.getString("rank");
-    const sebep = i.options.getString("sebep");
+  // RÜTBE İŞLEMLERİ
+  if (
+    ["terfi", "tenzil", "rütbe-değiştir"].includes(interaction.commandName)
+  ) {
+    const user = interaction.options.getString("user");
+    const rank = interaction.options.getString("rank");
+    const sebep = interaction.options.getString("sebep");
 
-    await fetch(`${BACKEND_URL}/rank`, {
+    await fetch("http://localhost:3000/rank", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        type: i.commandName,
         user,
         rank,
-        sebep
+        sebep,
+        type: interaction.commandName
       })
     });
 
-    return i.reply("✔ İşlem gönderildi");
+    return interaction.reply("✔ İşlem gönderildi");
   }
 });
 
