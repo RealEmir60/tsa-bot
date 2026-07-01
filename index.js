@@ -146,16 +146,71 @@ const commands = [
             { name: 'rütbe', description: 'Atanacak rütbe', type: ApplicationCommandOptionType.Integer, required: true, autocomplete: true },
             { name: 'sebep', description: 'Ortak gerekçe', type: ApplicationCommandOptionType.String, required: true }
         ]
+    },
+    {
+        name: 'temizle',
+        description: 'Kanaldan belirtilen sayıda mesajı temizler.',
+        options: [
+            { name: 'adet', description: '1-100 arası silinecek mesaj sayısı', type: ApplicationCommandOptionType.Integer, required: true }
+        ]
+    },
+    {
+        name: 'davet',
+        description: 'Roblox kullanıcısını oyuna davet eder.',
+        options: [
+            { name: 'roblox-isim', description: 'Davet edilecek Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true },
+            { name: 'mesaj', description: 'Davet mesajı', type: ApplicationCommandOptionType.String, required: false }
+        ]
+    },
+    {
+        name: 'izin',
+        description: 'Belirtilen Discord üyesine geçici yetkili rolü verir.',
+        options: [
+            { name: 'kullanıcı', description: 'Yetki verilecek Discord üyesi', type: ApplicationCommandOptionType.User, required: true },
+            { name: 'süre', description: 'Dakika cinsinden süre. Örn: 60', type: ApplicationCommandOptionType.Integer, required: true }
+        ]
+    },
+    {
+        name: 'yoklama',
+        description: 'Bulunduğun ses kanalındaki personelin rütbelerini listeler.'
+    },
+    {
+        name: 'duyuru-sabitle',
+        description: 'Duyuru atar ve kanala sabitler.',
+        options: [
+            { name: 'kanal', description: 'Duyuru kanalı', type: ApplicationCommandOptionType.Channel, required: true },
+            { name: 'içerik', description: 'Duyuru metni', type: ApplicationCommandOptionType.String, required: true },
+            { name: 'etiket', description: 'Everyone etiketlensin mi?', type: ApplicationCommandOptionType.Boolean, required: false }
+        ]
+    },
+    {
+        name: 'ceza',
+        description: 'Personele disiplin cezası verir.',
+        options: [
+            { name: 'roblox-isim', description: 'Cezalı personel', type: ApplicationCommandOptionType.String, required: true },
+            { name: 'sebep', description: 'Ceza sebebi', type: ApplicationCommandOptionType.String, required: true }
+        ]
+    },
+    {
+        name: 'nöbet',
+        description: 'Nöbet listesi oluşturur.',
+        options: [
+            { name: 'kişiler', description: 'Virgülle ayır: user1,user2,user3', type: ApplicationCommandOptionType.String, required: true },
+            { name: 'süre', description: 'Kaç dakikada bir değişsin', type: ApplicationCommandOptionType.Integer, required: true }
+        ]
+    },
+    {
+        name: 'aktiflik-duyuru',
+        description: 'Oyuna davet duyurusu atar ve @here etiketler.',
+        options: [
+            { name: 'kanal', description: 'Duyurunun atılacağı kanal', type: ApplicationCommandOptionType.Channel, required: false }
+        ]
     }
 ];
 
 async function robloxGiris() {
     try {
         if (!AYARLAR.ROBLOX_COOKIE) throw new Error("ROBLOX_COOKIE tanımlanmamış!");
-
-        console.log('[DEBUG] Cookie uzunluğu:', AYARLAR.ROBLOX_COOKIE.length);
-        console.log('[DEBUG] Cookie başı:', AYARLAR.ROBLOX_COOKIE.substring(0, 20));
-
         const currentUser = await noblox.setCookie(AYARLAR.ROBLOX_COOKIE);
         console.log(`[Roblox] Başarılı: ${currentUser.UserName} olarak giriş yapıldı.`);
     } catch (err) {
@@ -171,33 +226,33 @@ async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, y
             if (avatarResmi && avatarResmi[0]) avatarUrl = avatarResmi[0].imageUrl;
         } catch (e) {}
 
-        const logKanali = client.channels.cache.get(AYARLAR.LOG_CHANNEL_ID);
-        if (!logKanali) return null;
-
         const logEmbed = new EmbedBuilder()
-         .setColor('#3b5998')
-         .setTitle('İşlem Başarılı Rütbe Değiştirildi')
-         .addFields(
+     .setColor('#3b5998')
+     .setTitle('İşlem Başarılı Rütbe Değiştirildi')
+     .addFields(
                 { name: 'Kullanıcı', value: `${robloxUsername}`, inline: false },
                 { name: 'İşlem Yapan', value: `${interaction.user.username}`, inline: false },
                 { name: 'Eski Rütbe', value: `${eskiRutbe}`, inline: false },
                 { name: 'Yeni Rütbe', value: `${yeniRutbe}`, inline: false },
                 { name: 'Sebep', value: `${sebep || 'Belirtilmedi'}`, inline: false }
             )
-         .setThumbnail(avatarUrl)
-         .setTimestamp();
+     .setThumbnail(avatarUrl)
+     .setTimestamp();
 
         const butonRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-             .setLabel('Kullanıcı Bilgi')
-             .setStyle(ButtonStyle.Link)
-             .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
+         .setLabel('Kullanıcı Bilgi')
+         .setStyle(ButtonStyle.Link)
+         .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
         );
 
-        return await logKanali.send({ embeds: [logEmbed], components: [butonRow] });
+        const logKanali = client.channels.cache.get(AYARLAR.LOG_CHANNEL_ID);
+        if (logKanali) await logKanali.send({ embeds: [logEmbed], components: [butonRow] });
+
+        return { embeds: [logEmbed], components: [butonRow] };
     } catch (e) {
         console.error("[Log Hatası]", e.message);
-        return null;
+        return { content: '❌ Log gönderilemedi ama işlem başarılı.' };
     }
 }
 
@@ -221,7 +276,7 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.commandName === 'rütbe-değiştir' || interaction.commandName === 'toplu-rütbe') {
             const focusedValue = interaction.options.getFocused().toLowerCase();
             let secenekler =!focusedValue
-             ? ILK_25_RUTBE
+         ? ILK_25_RUTBE
                 : TUM_RUTBELER.filter(r => r.name.toLowerCase().includes(focusedValue)).slice(0, 25);
             try { await interaction.respond(secenekler); } catch (err) {}
         }
@@ -231,7 +286,7 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName, options, member, guild } = interaction;
 
-    const yetkiliKomutlari = ['rütbe-değiştir', 'terfi', 'tenzil', 'duyuru', 'eğitim-başlat', 'grup-listele', 'yasakla', 'ses-katıl', 'ses-ayrıl', 'toplu-rütbe'];
+    const yetkiliKomutlari = ['rütbe-değiştir', 'terfi', 'tenzil', 'duyuru', 'eğitim-başlat', 'grup-listele', 'yasakla', 'ses-katıl', 'ses-ayrıl', 'toplu-rütbe', 'temizle', 'davet', 'izin', 'yoklama', 'duyuru-sabitle', 'ceza', 'nöbet', 'aktiflik-duyuru'];
     if (yetkiliKomutlari.includes(commandName)) {
         if (!member.roles.cache.has(AYARLAR.YETKILI_ROL_ID) &&!member.permissions.has(PermissionFlagsBits.Administrator)) {
             return interaction.reply({ content: '❌ Bu askeri komutu kullanmak için yetkili karargah rolüne sahip olmalısınız.', ephemeral: true });
@@ -270,8 +325,8 @@ client.on('interactionCreate', async (interaction) => {
             await noblox.setRank(AYARLAR.GROUP_ID, userId, targetRankId);
             await new Promise(resolve => setTimeout(resolve, 1500));
             const yeniRutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
-            await logGonder(interaction, username, userId, eskiRutbe, yeniRutbe, sebep);
-            await interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2b2d31').setDescription(`✅ **${username}** personeli başarıyla **${yeniRutbe}** kadrosuna atandı.`)] });
+            const sonuc = await logGonder(interaction, username, userId, eskiRutbe, yeniRutbe, sebep);
+            await interaction.editReply(sonuc);
         }
 
         else if (commandName === 'terfi') {
@@ -282,8 +337,8 @@ client.on('interactionCreate', async (interaction) => {
             await noblox.promote(AYARLAR.GROUP_ID, userId);
             await new Promise(resolve => setTimeout(resolve, 1500));
             const yeniRutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
-            await logGonder(interaction, username, userId, eskiRutbe, yeniRutbe, sebep);
-            await interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2b2d31').setDescription(`🎖 **${username}** başarıyla bir üst rütbeye (**${yeniRutbe}**) terfi ettirildi.`)] });
+            const sonuc = await logGonder(interaction, username, userId, eskiRutbe, yeniRutbe, sebep);
+            await interaction.editReply(sonuc);
         }
 
         else if (commandName === 'tenzil') {
@@ -294,8 +349,8 @@ client.on('interactionCreate', async (interaction) => {
             await noblox.demote(AYARLAR.GROUP_ID, userId);
             await new Promise(resolve => setTimeout(resolve, 1500));
             const yeniRutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
-            await logGonder(interaction, username, userId, eskiRutbe, yeniRutbe, sebep);
-            await interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2b2d31').setDescription(`📉 **${username}** isimli personelin rütbesi **${yeniRutbe}** rütbesine tenzil edildi.`)] });
+            const sonuc = await logGonder(interaction, username, userId, eskiRutbe, yeniRutbe, sebep);
+            await interaction.editReply(sonuc);
         }
 
         else if (commandName === 'aktiflik-sorgu') {
@@ -312,11 +367,11 @@ client.on('interactionCreate', async (interaction) => {
                 if (data && data.data && data.data.length > 0) {
                     const gercekAktifOyuncu = data.data[0].playing || 0;
                     const oyunEmbed = new EmbedBuilder()
-                     .setColor('#2b2d31')
-                     .setTitle('⚔ Türk Askeri Oyunu | Canlı Aktiflik Radarı')
-                     .setDescription(`Anlık olarak operasyon bölgesinde bulunan net personel sayısı: **${gercekAktifOyuncu}**`)
-                     .setTimestamp()
-                     .setFooter({ text: 'Sistem: Karargah Canlı Senkronizasyonu Aktif' });
+                 .setColor('#2b2d31')
+                 .setTitle('⚔ Türk Askeri Oyunu | Canlı Aktiflik Radarı')
+                 .setDescription(`Anlık olarak operasyon bölgesinde bulunan net personel sayısı: **${gercekAktifOyuncu}**`)
+                 .setTimestamp()
+                 .setFooter({ text: 'Sistem: Karargah Canlı Senkronizasyonu Aktif' });
                     await interaction.editReply({ embeds: [oyunEmbed] });
                 } else {
                     await interaction.editReply("❌ Oyun verileri Roblox sunucularından çekilemedi. Lütfen OYUN_ID değerini kontrol edin.");
@@ -334,10 +389,10 @@ client.on('interactionCreate', async (interaction) => {
             const avatarResmi = await noblox.getPlayerThumbnail(userId, "150x150", "png", false, "Headshot");
             const avatarUrl = avatarResmi[0]?.imageUrl || "https://www.roblox.com/images/ThumbnailHolder/Player.png";
             const profilEmbed = new EmbedBuilder()
-             .setColor('#2b2d31')
-             .setTitle(`| TSA | Personel Künye Bilgisi`)
-             .setDescription(`**Kullanıcı Adı:** ${username}\n**Mevcut Rütbe:** ${rankName}`)
-             .setThumbnail(avatarUrl);
+         .setColor('#2b2d31')
+         .setTitle(`| TSA | Personel Künye Bilgisi`)
+         .setDescription(`**Kullanıcı Adı:** ${username}\n**Mevcut Rütbe:** ${rankName}`)
+         .setThumbnail(avatarUrl);
             const profilButon = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setLabel('Profilini Aç').setStyle(ButtonStyle.Link).setURL(`https://www.roblox.com/users/${userId}/profile`)
             );
@@ -353,9 +408,9 @@ client.on('interactionCreate', async (interaction) => {
                 grupMetni += `• **${g.Name}** — *Rütbe: ${g.Role}*\n`;
             });
             const grupEmbed = new EmbedBuilder()
-             .setColor('#2b2d31')
-             .setTitle(`📂 ${username} Kullanıcısının Roblox Grupları`)
-             .setDescription(grupMetni || "Bu kullanıcı herhangi bir Roblox grubuna üye değil.");
+         .setColor('#2b2d31')
+         .setTitle(`📂 ${username} Kullanıcısının Roblox Grupları`)
+         .setDescription(grupMetni || "Bu kullanıcı herhangi bir Roblox grubuna üye değil.");
             await interaction.editReply({ embeds: [grupEmbed] });
         }
 
@@ -435,18 +490,132 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply(`✅ Toplu atama bitti.\n**Başarılı:** ${basarili}\n**Hatalı:** ${hatali.join(', ') || 'Yok'}`);
         }
 
-    } catch (error) {
-        console.error("[Komut Hatası]", error);
-        if (interaction.deferred) await interaction.editReply(`❌ Karargah sistem hatası: ${error.message}`);
-    }
-});
+        else if (commandName === 'temizle') {
+            const adet = options.getInteger('adet');
+            if (adet < 1 || adet > 100) return interaction.editReply('❌ 1 ile 100 arasında bir sayı girmelisin.');
+            const silinen = await interaction.channel.bulkDelete(adet, true);
+            await interaction.editReply(`🧹 **${silinen.size}** mesaj temizlendi.`);
+            setTimeout(() => interaction.deleteReply(), 3000);
+        }
 
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('TSA Karargah Sistemi Canli ve Aktif!\n');
-});
+        else if (commandName === 'davet') {
+            const username = options.getString('roblox-isim');
+            const mesaj = options.getString('mesaj') || 'TSA Karargah tarafından oyuna davet edildiniz!';
+            const userId = await noblox.getIdFromUsername(username);
 
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`[Render] Port dinleniyor: ${PORT}`));
+            const davetEmbed = new EmbedBuilder()
+         .setColor('#00ff00')
+         .setTitle('🎮 TSA Oyun Daveti')
+         .setDescription(`**${username}** için davet oluşturuldu.\n\n**Mesaj:** ${mesaj}`)
+         .addFields({ name: 'Oyun Linki', value: `https://www.roblox.com/games/${AYARLAR.OYUN_ID}` })
+         .setFooter({ text: `Davet eden: ${interaction.user.username}` });
 
-if (AYARLAR.DISCORD_TOKEN) client.login(AYARLAR.DISCORD_TOKEN);
+            await interaction.editReply({ embeds: [davetEmbed] });
+        }
+
+        else if (commandName === 'izin') {
+            const hedefUye = options.getMember('kullanıcı');
+            const sureDk = options.getInteger('süre');
+            if (!hedefUye) return interaction.editReply('❌ Kullanıcı bulunamadı.');
+
+            await hedefUye.roles.add(AYARLAR.YETKILI_ROL_ID);
+            await interaction.editReply(`✅ **${hedefUye.user.username}** kullanıcısına **${sureDk} dakika** yetkili rolü verildi.`);
+
+            setTimeout(async () => {
+                try {
+                    if (hedefUye.roles.cache.has(AYARLAR.YETKILI_ROL_ID)) {
+                        await hedefUye.roles.remove(AYARLAR.YETKILI_ROL_ID);
+                        interaction.channel.send(`⏰ **${hedefUye.user.username}** kullanıcısının yetkili rolü süresi doldu, geri alındı.`);
+                    }
+                } catch(e) {}
+            }, sureDk * 60 * 1000);
+        }
+
+        else if (commandName === 'yoklama') {
+            const sesKanali = member.voice.channel;
+            if (!sesKanali) return interaction.editReply("❌ Yoklama için bir ses kanalında olmalısın.");
+
+            await interaction.editReply('⏳ Personel künyeleri kontrol ediliyor...');
+            const uyeler = sesKanali.members.filter(m =>!m.user.bot);
+            let yoklamaListesi = '';
+            let sayac = 0;
+
+            for (const [id, uye] of uyeler) {
+                try {
+                    const dcNick = uye.nickname || uye.user.username;
+                    const match = dcNick.match(/\(([^)]+)\)/);
+                    if (!match) {
+                        yoklamaListesi += `❓ ${dcNick} - *Roblox ismi bulunamadı*\n`;
+                        continue;
+                    }
+                    const robloxIsim = match[1];
+                    const userId = await noblox.getIdFromUsername(robloxIsim);
+                    const rutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
+                    yoklamaListesi += `✅ **${robloxIsim}** - ${rutbe}\n`;
+                    sayac++;
+                    await new Promise(r => setTimeout(r, 800));
+                } catch(e) {
+                    yoklamaListesi += `❌ ${uye.user.username} - *Hata*\n`;
+                }
+            }
+
+            const embed = new EmbedBuilder()
+         .setColor('#00ff00')
+         .setTitle(`📋 ${sesKanali.name} Yoklama Raporu`)
+         .setDescription(yoklamaListesi || 'Kanalda personel yok.')
+         .setFooter({ text: `Toplam ${sayac} personel tespit edildi` })
+         .setTimestamp();
+
+            await interaction.editReply({ content: '', embeds: [embed] });
+        }
+
+        else if (commandName === 'duyuru-sabitle') {
+            const hedefKanal = options.getChannel('kanal');
+            const icerik = options.getString('içerik');
+            const etiketle = options.getBoolean('etiket') || false;
+
+            const duyuruEmbed = new EmbedBuilder()
+         .setColor('#ff0000')
+         .setTitle('📢 | TSA RESMİ DUYURU')
+         .setDescription(icerik)
+         .setFooter({ text: `Duyuran: ${interaction.user.username}` })
+         .setTimestamp();
+
+            const mesaj = await hedefKanal.send({
+                content: etiketle? '@everyone' : null,
+                embeds: [duyuruEmbed]
+            });
+            await mesaj.pin();
+            await interaction.editReply(`✅ Duyuru ${hedefKanal} kanalına atıldı ve sabitlendi.`);
+        }
+
+        else if (commandName === 'ceza') {
+            const username = options.getString('roblox-isim');
+            const sebep = options.getString('sebep');
+            const userId = await noblox.getIdFromUsername(username);
+            const rutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
+
+            const cezaEmbed = new EmbedBuilder()
+         .setColor('#ff0000')
+         .setTitle('⚠️ Disiplin Cezası')
+         .addFields(
+                    { name: 'Personel', value: username, inline: true },
+                    { name: 'Rütbe', value: rutbe, inline: true },
+                    { name: 'Ceza Veren', value: interaction.user.username, inline: true },
+                    { name: 'Sebep', value: sebep, inline: false }
+                )
+         .setTimestamp();
+
+            const logKanali = client.channels.cache.get(AYARLAR.LOG_CHANNEL_ID);
+            if (logKanali) await logKanali.send({ embeds: [cezaEmbed] });
+
+            await interaction.editReply({ embeds: [cezaEmbed] });
+        }
+
+        else if (commandName === 'nöbet') {
+            const kisiler = options.getString('kişiler').split(',').map(k => k.trim());
+            const sureDk = options.getInteger('süre');
+
+            await interaction.editReply(`🔔 Nöbet sistemi başlatıldı. **${sureDk}** dakikada bir değişim olacak.\n\n**Liste:** ${kisiler.join(' → ')}`);
+
+            let si
