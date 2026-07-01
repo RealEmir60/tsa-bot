@@ -1,33 +1,22 @@
-// ====== OTOMATİK MODÜL YÜKLEYİCİ (index.js En Üstüne Ekle) ======
-try {
-    require('noblox.js');
-} catch (e) {
-    console.log("[Sistem] noblox.js bulunamadı, Render üzerinde otomatik kuruluyor...");
-    const { execSync } = require('child_process');
-    execSync('npm install noblox.js discord.js', { stdio: 'inherit' });
-    console.log("[Sistem] Modüller başarıyla yüklendi, bot başlatılıyor.");
-}
-// ===============================================================
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits } = require('discord.js');
 const noblox = require('noblox.js');
 const http = require('http');
 
-// ==================== AYARLAR BÖLÜMÜ ====================
+// Render veya yerel ortamdaki .env / Environment değişkenlerini çeker
 const AYARLAR = {
-    DISCORD_TOKEN: "BOTUNUN_DISCORD_TOKENI", 
-    ROBLOX_COOKIE: "ROBLOX_ROBLESSECURITY_CEREZI", 
-    GROUP_ID: 972348115, // TSA Grubu ID'si
-    LOG_CHANNEL_ID: "LOG_MESAJININ_GIDECEGI_KANAL_ID",
-    YETKILI_ROL_ID: "1518357646971764859", // Yetkili Rol ID
-    OYUN_ID: 138257110169831 // Türk Askeri Oyunu ID
+    DISCORD_TOKEN: process.env.DISCORD_TOKEN, 
+    ROBLOX_COOKIE: process.env.ROBLOX_COOKIE, 
+    GROUP_ID: parseInt(process.env.GROUP_ID) || 972348115, 
+    LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
+    YETKILI_ROL_ID: process.env.YETKILI_ROL_ID || "1518357646971764859", 
+    OYUN_ID: 138257110169831 
 };
-// =======================================================
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
-// Tüm Slash Komut Tanımlamaları
+// Slash Komut Tanımlamaları
 const commands = [
     {
         name: 'rütbe-değiştir',
@@ -51,7 +40,7 @@ const commands = [
         description: 'Kullanıcının gruptaki rütbesini -1 derece düşürür.',
         options: [
             { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true },
-            { name: 'sebep', description: 'Tenzil sebebi', type: ApplicationCommandOptionType.String, required: true }
+            { name: 'tenzil-sebebi', description: 'Tenzil sebebi', type: ApplicationCommandOptionType.String, required: true }
         ]
     },
     {
@@ -95,12 +84,13 @@ const commands = [
     }
 ];
 
-// Roblox Giriş
+// Roblox Giriş Fonksiyonu
 async function robloxGiris() {
     try {
+        if (!AYARLAR.ROBLOX_COOKIE) return console.error("[Roblox] Hata: ROBLOX_COOKIE çevre değişkeni tanımlı değil!");
         await noblox.setCookie(AYARLAR.ROBLOX_COOKIE);
         const botKullanici = await noblox.getAuthenticatedUser();
-        console.log(`[Roblox] ${botKullanici.UserName} entegre edildi.`);
+        console.log(`[Roblox] ${botKullanici.UserName} olarak giriş yapıldı.`);
     } catch (err) {
         console.error("[Roblox] Giriş hatası:", err);
     }
@@ -108,37 +98,41 @@ async function robloxGiris() {
 
 // Ortak Log Gönderme Fonksiyonu (Screenshot_10.png Stili)
 async function logGonder(interaction, robloxUsername, robloxUserId, eskiRutbe, yeniRutbe, sebep) {
-    const avatarResmi = await noblox.getPlayerThumbnail(robloxUserId, "150x150", "png", false, "Headshot");
-    const avatarUrl = avatarResmi[0]?.imageUrl || "https://www.roblox.com/images/ThumbnailHolder/Player.png";
+    try {
+        const avatarResmi = await noblox.getPlayerThumbnail(robloxUserId, "150x150", "png", false, "Headshot");
+        const avatarUrl = avatarResmi[0]?.imageUrl || "https://www.roblox.com/images/ThumbnailHolder/Player.png";
 
-    const logKanali = client.channels.cache.get(AYARLAR.LOG_CHANNEL_ID);
-    if (!logKanali) return;
+        const logKanali = client.channels.cache.get(AYARLAR.LOG_CHANNEL_ID);
+        if (!logKanali) return console.log("[Sistem] Log kanalı bulunamadı, log iletilemedi.");
 
-    const logEmbed = new EmbedBuilder()
-        .setColor('#2b2d31')
-        .setTitle('| TSA  |  Karargah')
-        .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
-        .setDescription(
-            `**İşlem Başarılı Rütbe Değiştirildi**\n\n` +
-            `**Kullanıcı:** ${robloxUsername}\n` +
-            `**İşlem Yapan:** ${interaction.user.username}\n` +
-            `**Eski Rütbe:** ${eskiRutbe}\n` +
-            `**Yeni Rütbe:** ${yeniRutbe}\n` +
-            `**Sebep:** ${sebep}`
-        )
-        .setThumbnail(avatarUrl);
+        const logEmbed = new EmbedBuilder()
+            .setColor('#2b2d31')
+            .setTitle('| TSA  |  Karargah')
+            .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
+            .setDescription(
+                `**İşlem Başarılı Rütbe Değiştirildi**\n\n` +
+                `**Kullanıcı:** ${robloxUsername}\n` +
+                `**İşlem Yapan:** ${interaction.user.username}\n` +
+                `**Eski Rütbe:** ${eskiRutbe}\n` +
+                `**Yeni Rütbe:** ${yeniRutbe}\n` +
+                `**Sebep:** ${sebep}`
+            )
+            .setThumbnail(avatarUrl);
 
-    const buton = new ButtonBuilder()
-        .setLabel('Kullanıcı Bilgi')
-        .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
-        .setStyle(ButtonStyle.Link);
+        const buton = new ButtonBuilder()
+            .setLabel('Kullanıcı Bilgi')
+            .setURL(`https://www.roblox.com/users/${robloxUserId}/profile`)
+            .setStyle(ButtonStyle.Link);
 
-    const row = new ActionRowBuilder().addComponents(buton);
-    await logKanali.send({ embeds: [logEmbed], components: [row] });
+        const row = new ActionRowBuilder().addComponents(buton);
+        await logKanali.send({ embeds: [logEmbed], components: [row] });
+    } catch (e) {
+        console.error("[Log Hatası]", e);
+    }
 }
 
 client.once('ready', async () => {
-    console.log(`[Discord] Bot aktif.`);
+    console.log(`[Discord] ${client.user.tag} aktif ve karargah görevine hazır.`);
     robloxGiris();
 
     // Nickname güncelleme
@@ -165,7 +159,7 @@ client.on('interactionCreate', async (interaction) => {
 
     const { commandName, options, member } = interaction;
     
-    // Yetkili Rol Kısıtlaması Gerektiren Komutlar
+    // Yetkili Rol Kısıtlaması Kontrolü
     const yetkiliKomutlari = ['rütbe-değiştir', 'terfi', 'tenzil', 'duyuru', 'eğitim-başlat'];
     if (yetkiliKomutlari.includes(commandName)) {
         if (!member.roles.cache.has(AYARLAR.YETKILI_ROL_ID)) {
@@ -207,7 +201,7 @@ client.on('interactionCreate', async (interaction) => {
 
         else if (commandName === 'tenzil') {
             const username = options.getString('roblox-isim');
-            const sebep = options.getString('sebep');
+            const sebep = options.getString('tenzil-sebebi');
 
             const userId = await noblox.getIdFromUsername(username);
             const eskiRutbe = await noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId);
@@ -223,7 +217,6 @@ client.on('interactionCreate', async (interaction) => {
             const username = options.getString('roblox-isim');
             const userId = await noblox.getIdFromUsername(username);
             
-            // Tüm bilgileri paralel olarak çekiyoruz
             const [playerInfo, rankName, rankId, avatarResmi] = await Promise.all([
                 noblox.getPlayerInfo(userId),
                 noblox.getRankNameInGroup(AYARLAR.GROUP_ID, userId),
@@ -319,7 +312,7 @@ client.on('interactionCreate', async (interaction) => {
                 .setDescription(
                     `**Eğitim Türü:** ${tur}\n` +
                     `**Başlangıç Saati:** ${saat}\n\n` +
-                    `Tüm personelin belirtilen saatte hazır kıta olması önemle rica olunur. Disiplinsizlik gösterenler hakkında yasal işlem başlatılacaktır.`
+                    `Tüm personelin belirtilen saatte hazır kıta olması önemle rica olunur.`
                 )
                 .setTimestamp()
                 .setFooter({ text: `Eğitimi Yöneten: ${interaction.user.username}` });
@@ -349,15 +342,19 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ====== RENDER İÇİN PORT DİNLEYİCİSİ ======
+// ====== RENDER WEB SİTESİ SUNUCUSU PORT AYARI ======
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('TSA Karargah Botu Aktif!\n');
+    res.end('TSA Karargah Botu Aktif Durumda!\n');
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`[Render] Port ${PORT} üzerinden dinleniyor.`);
+    console.log(`[Render] Sunucu aktif, port dinleniyor: ${PORT}`);
 });
 
-client.login(AYARLAR.DISCORD_TOKEN);
+if (AYARLAR.DISCORD_TOKEN) {
+    client.login(AYARLAR.DISCORD_TOKEN);
+} else {
+    console.error("[Discord] Hata: DISCORD_TOKEN çevre değişkeni girilmemiş!");
+}
