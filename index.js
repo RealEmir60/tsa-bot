@@ -1,37 +1,35 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require("discord.js");
+const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes } = require("discord.js");
+const fetch = require("node-fetch");
 const express = require("express");
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages
-  ]
+  intents: [GatewayIntentBits.Guilds]
 });
 
-// Keep alive
+// keep alive
 const app = express();
 app.get("/", (req, res) => res.send("TSA BOT AKTİF"));
 app.listen(3000);
 
-// SLASH KOMUTLAR
+// 🔥 KOMUTLAR
 const commands = [
   new SlashCommandBuilder()
     .setName("ping")
-    .setDescription("Botu test eder"),
+    .setDescription("Bot test"),
 
   new SlashCommandBuilder()
-    .setName("duyuru")
-    .setDescription("Duyuru gönderir")
-    .addStringOption(option =>
-      option.setName("mesaj")
-        .setDescription("Duyuru mesajı")
+    .setName("rank")
+    .setDescription("Roblox rank gösterir")
+    .addStringOption(opt =>
+      opt.setName("userid")
+        .setDescription("Roblox User ID")
         .setRequired(true)
     )
-].map(cmd => cmd.toJSON());
+].map(c => c.toJSON());
 
 // BOT READY
 client.once("ready", async () => {
-  console.log(`BOT GİRİŞ YAPTI: ${client.user.tag}`);
+  console.log("BOT GİRİŞ YAPTI:", client.user.tag);
 
   const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
@@ -43,26 +41,49 @@ client.once("ready", async () => {
   console.log("Slash komutlar yüklendi");
 });
 
-// SLASH KOMUTLAR ÇALIŞTIRMA
+// 🔥 RANK ÇEKME
+async function getRank(userId) {
+  const groupId = process.env.GROUP_ID || "972348115";
+
+  try {
+    const res = await fetch(`https://groups.roblox.com/v2/users/${userId}/groups/roles`);
+    const data = await res.json();
+
+    const group = data.data.find(g => g.group.id == groupId);
+
+    if (!group) return null;
+
+    return {
+      name: group.role.name,
+      rank: group.role.rank
+    };
+
+  } catch (err) {
+    console.log("Hata:", err);
+    return null;
+  }
+}
+
+// SLASH INTERACTION
 client.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "ping") {
-    await interaction.reply("TSA sistem aktif ✔");
+    interaction.reply("TSA bot aktif ✔");
   }
 
-  if (interaction.commandName === "duyuru") {
-    const msg = interaction.options.getString("mesaj");
+  if (interaction.commandName === "rank") {
+    const userId = interaction.options.getString("userid");
 
-    await interaction.reply(`📢 Duyuru gönderildi: ${msg}`);
+    const rank = await getRank(userId);
 
-    const logChannel = interaction.guild.channels.cache.find(
-      c => c.name === "log"
-    );
-
-    if (logChannel) {
-      logChannel.send(`📌 Duyuru: ${msg}`);
+    if (!rank) {
+      return interaction.reply("Rank bulunamadı ❌");
     }
+
+    interaction.reply(
+      `🎖 Roblox Rank:\n**${rank.name}**\nSeviye: ${rank.rank}`
+    );
   }
 });
 
