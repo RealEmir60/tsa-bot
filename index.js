@@ -1,3 +1,13 @@
+// ====== OTOMATİK MODÜL YÜKLEYİCİ (index.js En Üstüne Ekle) ======
+try {
+    require('noblox.js');
+} catch (e) {
+    console.log("[Sistem] noblox.js bulunamadı, Render üzerinde otomatik kuruluyor...");
+    const { execSync } = require('child_process');
+    execSync('npm install noblox.js discord.js', { stdio: 'inherit' });
+    console.log("[Sistem] Modüller başarıyla yüklendi, bot başlatılıyor.");
+}
+// ===============================================================
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, ApplicationCommandOptionType, PermissionFlagsBits } = require('discord.js');
 const noblox = require('noblox.js');
 const http = require('http');
