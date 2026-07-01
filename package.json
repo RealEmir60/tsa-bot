@@ -1,5 +1,5 @@
 {
-  "name": "tsa-rutbe-botu",
+  "name": "tsa-bot",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -8,9 +8,11 @@
   "dependencies": {
     "discord.js": "^14.14.1",
     "noblox.js": "^1.1.0",
-    "node-fetch": "^2.7.0",
+    "dotenv": "^16.4.5",
     "@discordjs/voice": "^0.16.1",
-    "libsodium-wrappers": "^0.7.13",
-    "dotenv": "^16.4.5"
+    "libsodium-wrappers": "^0.7.13"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
