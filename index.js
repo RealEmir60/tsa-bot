@@ -184,7 +184,7 @@ async function logGonder(interaction, username, userId, eskiRutbe, yeniRutbe, se
 // --- EVENT HANDLERS ---
 client.once('ready', async () => {
     console.log(`[Discord] ${client.user.tag} göreve hazır!`);
-    client.user.setActivity('TSA | Karargah Denetimi', { type: ActivityType.Watching });
+    client.user.setActivity('TSA | Turkish Special Army', { type: ActivityType.Playing });
     await robloxGiris();
 
     const rest = new REST({ version: '10' }).setToken(AYARLAR.DISCORD_TOKEN);
