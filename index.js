@@ -11,8 +11,8 @@ const AYARLAR = {
     OYUN_ID: 138257110169831 
 };
 
-// ==================== 🪖 SABİT RÜTBE LİSTELERİ (KESİN ÇÖZÜM) ====================
-const ER_VE_SUBAY_KADROSU = [
+// ==================== 🪖 TÜM RÜTBELERİN TAM LİSTESİ ====================
+const TUM_RUTBELER = [
     { name: '[OR-1] Acemi Er', value: 1 },
     { name: '[OR-2] Onbaşı', value: 2 },
     { name: '[OR-3] Uzman Onbaşı', value: 3 },
@@ -28,10 +28,7 @@ const ER_VE_SUBAY_KADROSU = [
     { name: '[OF-2] YüzBaşı', value: 13 },
     { name: '[OF-3] Binbaşı', value: 14 },
     { name: '[OF-4] Yarbay', value: 15 },
-    { name: '[OF-5] Albay', value: 16 }
-];
-
-const UST_KOMUTA_VE_YONETIM = [
+    { name: '[OF-5] Albay', value: 16 },
     { name: '[OF-6] Tuğgeneral', value: 17 },
     { name: '[OF-7] Tümgeneral', value: 18 },
     { name: '[OF-8] Korgeneral', value: 19 },
@@ -56,7 +53,10 @@ const UST_KOMUTA_VE_YONETIM = [
     { name: 'Grup Sahibi', value: 254 },
     { name: 'TSA', value: 255 }
 ];
-// ===============================================================================
+
+// Discord'un ilk başta göstereceği maksimum 25 rütbelik limit listesi
+const ILK_25_RUTBE = TUM_RUTBELER.slice(0, 25);
+// =======================================================================
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers]
@@ -65,32 +65,17 @@ const client = new Client({
 const commands = [
     {
         name: 'rütbe-değiştir',
-        description: 'Belirtilen Roblox kullanıcısının rütbesini alt kadrodan bir rütbeye ayarlar.',
+        description: 'Belirtilen personelin rütbesini listeden seçerek veya aratarak değiştirir.',
         options: [
             { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true },
             { 
                 name: 'rütbe', 
-                description: 'Değiştirilmek istenen yeni rütbe (Er - Albay Arası)', 
+                description: 'İlk 25 rütbeyi seçin veya üst rütbeler için harf yazarak aratın', 
                 type: ApplicationCommandOptionType.Integer, 
                 required: true,
-                choices: ER_VE_SUBAY_KADROSU
+                autocomplete: true // Akıllı arama motorunu tetikler
             },
-            { name: 'sebep', description: 'İşlem sebebi', type: ApplicationCommandOptionType.String, required: true }
-        ]
-    },
-    {
-        name: 'yönetim-rütbe-değiştir',
-        description: 'Belirtilen personeli üst komuta veya yönetim kurullarına atar.',
-        options: [
-            { name: 'roblox-isim', description: 'Roblox kullanıcı adı', type: ApplicationCommandOptionType.String, required: true },
-            { 
-                name: 'rütbe', 
-                description: 'Değiştirilmek istenen üst rütbe (Generaller ve Yönetim)', 
-                type: ApplicationCommandOptionType.Integer, 
-                required: true,
-                choices: UST_KOMUTA_VE_YONETIM
-            },
-            { name: 'sebep', description: 'İşlem sebebi', type: ApplicationCommandOptionType.String, required: true }
+            { name: 'sebep', description: 'İşlem gerekçesi', type: ApplicationCommandOptionType.String, required: true }
         ]
     },
     {
@@ -210,13 +195,38 @@ client.once('ready', async () => {
     }
 });
 
+// ==================== 🔍 AKILLI RADAR VE OTOMATİK TAMAMLAMA MOTORU ====================
 client.on('interactionCreate', async (interaction) => {
-    // Sadece geçerli chat slash komutlarını dinler, eski autocomplete isteklerini bloke eder.
+    if (interaction.isAutocomplete()) {
+        if (interaction.commandName === 'rütbe-değiştir') {
+            // v14 Standartlarına uygun hatasız odaklanmış metin çekimi
+            const focusedValue = interaction.options.getFocused().toLowerCase();
+            
+            let secenekler;
+            if (!focusedValue) {
+                // Eğer kutu boşsa ilk 25 rütbeyi şak diye gösterir
+                secenekler = ILK_25_RUTBE;
+            } else {
+                // Harf yazılmaya başlandıysa tüm listeden eşleşenleri filtreler (Maks 25 adet)
+                secenekler = TUM_RUTBELER.filter(rutbe => 
+                    rutbe.name.toLowerCase().includes(focusedValue)
+                ).slice(0, 25);
+            }
+
+            try {
+                await interaction.respond(secenekler);
+            } catch (err) {
+                console.error("[Arama Motoru Hatası Bloke Edildi]:", err.message);
+            }
+        }
+        return; // Autocomplete işlemi bitti, aşağıya geçme.
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName, options, member, guild } = interaction;
     
-    const yetkiliKomutlari = ['rütbe-değiştir', 'yönetim-rütbe-değiştir', 'terfi', 'tenzil', 'duyuru', 'eğitim-başlat', 'grup-listele', 'yasakla'];
+    const yetkiliKomutlari = ['rütbe-değiştir', 'terfi', 'tenzil', 'duyuru', 'eğitim-başlat', 'grup-listele', 'yasakla'];
     if (yetkiliKomutlari.includes(commandName)) {
         if (!member.roles.cache.has(AYARLAR.YETKILI_ROL_ID) && !member.permissions.has(PermissionFlagsBits.Administrator)) {
             return interaction.reply({ content: '❌ Bu askeri komutu kullanmak için yetkili karargah rolüne sahip değilsiniz.', ephemeral: true });
@@ -270,9 +280,9 @@ client.on('interactionCreate', async (interaction) => {
             if (logKanali) await logKanali.send({ embeds: [banEmbed] });
         }
 
-        else if (commandName === 'rütbe-değiştir' || commandName === 'yönetim-rütbe-değiştir') {
+        else if (commandName === 'rütbe-değiştir') {
             const username = options.getString('roblox-isim');
-            const targetRankId = options.getInteger('rütbe');
+            const targetRankId = options.getInteger('rütbe'); // Seçilen rütbenin ID değerini alır
             const sebep = options.getString('sebep');
 
             const userId = await noblox.getIdFromUsername(username);
@@ -337,12 +347,9 @@ client.on('interactionCreate', async (interaction) => {
 
         else if (commandName === 'aktiflik-sorgu') {
             try {
-                // Roblox'un canlı oyun trafiğini tutan ana API'sine bağlanıyoruz
                 const url = `https://games.roblox.com/v1/games?universeIds=${AYARLAR.OYUN_ID}`;
                 const response = await fetch(url);
                 const data = await response.json();
-                
-                // Oyundaki tüm aktif sunuculardaki gerçek oyuncu sayısını çekiyoruz
                 const gerçekAktifOyuncu = data.data?.[0]?.playing || 0;
 
                 const oyunEmbed = new EmbedBuilder()
