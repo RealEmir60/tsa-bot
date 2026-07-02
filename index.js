@@ -7,6 +7,11 @@ const noblox = require('noblox.js');
 const http = require('http');
 const fs = require('fs');
 
+console.log('===== COOKIE KONTROL =====');
+console.log('Cookie var mı:', !!process.env.ROBLOX_COOKIE);
+console.log('Cookie uzunluk:', process.env.ROBLOX_COOKIE?.length || 0);
+console.log('Cookie baş 50:', process.env.ROBLOX_COOKIE?.substring(0, 50));
+console.log('==========================');
 const AYARLAR = {
     DISCORD_TOKEN: process.env.DISCORD_TOKEN,
     ROBLOX_COOKIE: process.env.ROBLOX_COOKIE,
