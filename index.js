@@ -5,225 +5,104 @@ const fs = require('fs');
 const express = require('express');
 require('dotenv').config();
 
-const app = express();
-app.get('/', (req, res) => res.send('TSA Bot Aktif - Turkish Special Army'));
-app.listen(process.env.PORT || 3000, () => console.log('[Web] Port aktif'));
-
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
-    ]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers]
 });
 
 const CONFIG = {
     TOKEN: process.env.DISCORD_TOKEN,
+    IZIN_ROL_ID: process.env.IZIN_ROL_ID,
+    DM_YETKILI_ROL: '1518357646971764859',
     GRUP_LINK: 'https://www.roblox.com/tr/communities/972348115/TSA-Turkish-Armed-Forces-Yeniden',
     OYUN_LINK: 'https://www.roblox.com/tr/games/138257110169831/T-rk-Asker-Oyunu',
     VERI_DOSYASI: './tsa_veri.json'
 };
 
-if (!CONFIG.TOKEN) {
-    console.error('[HATA] DISCORD_TOKEN bulunamadı!');
-    process.exit(1);
-}
-
+// Data işlemleri
 let VERI = { izinler: {}, aktiflik: {} };
-if (fs.existsSync(CONFIG.VERI_DOSYASI)) {
-    try { VERI = JSON.parse(fs.readFileSync(CONFIG.VERI_DOSYASI)); } catch(e) {}
-}
-function veriKaydet(){ 
-    try { fs.writeFileSync(CONFIG.VERI_DOSYASI, JSON.stringify(VERI, null, 2)); } catch(e) { console.error(e); }
-}
+if (fs.existsSync(CONFIG.VERI_DOSYASI)) { try { VERI = JSON.parse(fs.readFileSync(CONFIG.VERI_DOSYASI)); } catch(e) {} }
+function veriKaydet() { fs.writeFileSync(CONFIG.VERI_DOSYASI, JSON.stringify(VERI, null, 2)); }
 
 const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
 
+// Komutlar
 const komutlar = [
     new SlashCommandBuilder().setName('ses-katıl').setDescription('Botu sesli kanala sokar').addChannelOption(o=>o.setName('kanal').setDescription('Kanal').setRequired(true)),
     new SlashCommandBuilder().setName('ses-çıkış').setDescription('Botu sesli kanaldan çıkarır'),
-    new SlashCommandBuilder().setName('çal').setDescription('Müzik çalar').addStringOption(o=>o.setName('link').setDescription('YouTube linki').setRequired(true)),
-    new SlashCommandBuilder().setName('aktiflik-sıralama').setDescription('Aktiflik sıralamasını gösterir'),
-    new SlashCommandBuilder().setName('temizle').setDescription('Mesaj siler').addIntegerOption(o=>o.setName('adet').setDescription('1-100 arası').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
-    new SlashCommandBuilder().setName('duyuru').setDescription('Duyuru gönderir').addStringOption(o=>o.setName('mesaj').setDescription('Duyuru').setRequired(true)).addChannelOption(o=>o.setName('kanal').setDescription('Kanal')).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-    new SlashCommandBuilder().setName('izin-al').setDescription('İzin talebi oluşturur').addStringOption(o=>o.setName('sebep').setDescription('İzin sebebi').setRequired(true)).addIntegerOption(o=>o.setName('gun').setDescription('Kaç gün').setRequired(true)),
-    new SlashCommandBuilder().setName('izin-iptal').setDescription('İznini iptal eder'),
-    new SlashCommandBuilder().setName('izin-listesi').setDescription('Aktif izinleri listeler'),
-    new SlashCommandBuilder().setName('grup').setDescription('TSA Roblox grup linkini atar'),
-    new SlashCommandBuilder().setName('oyun').setDescription('TSA Roblox oyun linkini atar'),
-    new SlashCommandBuilder().setName('dm').setDescription('Kullanıcıya DM gönderir').addUserOption(o=>o.setName('kullanici').setDescription('Kullanıcı').setRequired(true)).addStringOption(o=>o.setName('mesaj').setDescription('Mesaj içeriği').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    new SlashCommandBuilder().setName('çal').setDescription('Müzik çalar').addStringOption(o=>o.setName('link').setDescription('Link').setRequired(true)),
+    new SlashCommandBuilder().setName('temizle').setDescription('Mesaj siler').addIntegerOption(o=>o.setName('adet').setDescription('1-100').setRequired(true)),
+    new SlashCommandBuilder().setName('izin-al').setDescription('İzin talebi oluştur').addStringOption(o=>o.setName('sebep').setDescription('Sebep').setRequired(true)).addIntegerOption(o=>o.setName('gun').setDescription('Gün').setRequired(true)),
+    new SlashCommandBuilder().setName('izin-iptal').setDescription('İzni iptal eder'),
+    new SlashCommandBuilder().setName('izin-listesi').setDescription('İzinlileri gösterir'),
+    new SlashCommandBuilder().setName('dm-duyuru').setDescription('Kullanıcıya özel duyuru').addUserOption(o=>o.setName('kullanici').setDescription('Kullanıcı').setRequired(true)).addStringOption(o=>o.setName('mesaj').setDescription('Mesaj').setRequired(true)),
+    new SlashCommandBuilder().setName('grup').setDescription('Grup linkini atar'),
+    new SlashCommandBuilder().setName('oyun').setDescription('Oyun linkini atar'),
+    new SlashCommandBuilder().setName('aktiflik-sıralama').setDescription('Sıralamayı gösterir')
 ].map(c=>c.toJSON());
 
-client.once('clientReady', async () => {
-    console.log(`[Discord] | TSA Bot | ${client.user.tag} aktif!`);
-    
-    client.user.setPresence({
-        activities: [{ name: 'TSA- Turkish Special Army', type: ActivityType.Playing }],
-        status: 'online'
-    });
-    
+client.once('ready', async () => {
     const rest = new REST({version:'10'}).setToken(CONFIG.TOKEN);
-    try{
-        await rest.put(Routes.applicationCommands(client.user.id),{body:komutlar});
-        console.log(`[Discord] ✅ ${komutlar.length} komut yüklendi`);
-    }catch(e){console.error('[Komut Yükleme Hatası]', e)}
+    await rest.put(Routes.applicationCommands(client.user.id), {body: komutlar});
+    console.log(`[${client.user.tag}] Başarıyla başlatıldı.`);
 });
 
-client.on('messageCreate', async msg => {
-    if(msg.author.bot) return;
-    if(msg.content.trim() === ':') {
-        const embed = new EmbedBuilder()
-           .setColor(0x0099FF)
-           .setTitle('🪖 TSA Roblox Grubu')
-           .setDescription(`**Katılmak için tıkla:**\n${CONFIG.GRUP_LINK}`)
-           .setURL(CONFIG.GRUP_LINK)
-           .setThumbnail('https://tr.rbxcdn.com/180DAY-AvatarHeadshot-A1A1A1-Png/150/150/AvatarHeadshot/Webp/noFilter')
-           .setFooter({text: 'Turkish Special Army'});
-        await msg.reply({embeds: [embed]});
-    }
-
-    if(!VERI.aktiflik[msg.author.id]) VERI.aktiflik[msg.author.id] = 0;
-    VERI.aktiflik[msg.author.id]++;
-    if(VERI.aktiflik[msg.author.id] % 50 === 0) veriKaydet();
-});
+// UI Helper
+const createEmbed = (title, desc, color = 0x0099FF) => new EmbedBuilder().setColor(color).setTitle(title).setDescription(desc).setTimestamp().setFooter({text: 'TSA Komutanlığı'});
 
 client.on('interactionCreate', async i => {
     if(!i.isChatInputCommand()) return;
-    const n = i.commandName;
 
-    try {
-        if(n==='ses-katıl'){
-            const k=i.options.getChannel('kanal');
-            if(!k.isVoiceBased())return i.reply({content:'❌ Ses kanalı seç!',flags:64});
-            const c=joinVoiceChannel({channelId:k.id,guildId:i.guild.id,adapterCreator:i.guild.voiceAdapterCreator});
-            c.subscribe(player);
-            await i.reply({content:`✅ ${k} kanalına katıldım!`,flags:64});
-        }
-        else if(n==='ses-çıkış'){
-            const c=getVoiceConnection(i.guild.id);
-            if(!c)return i.reply({content:'❌ Kanalda değilim!',flags:64});
-            player.stop();c.destroy();
-            await i.reply({content:'✅ Sesli kanaldan çıktım!',flags:64});
-        }
-        else if(n==='çal'){
-            await i.deferReply();
-            const link=i.options.getString('link');
-            const c=getVoiceConnection(i.guild.id);
-            if(!c)return i.editReply('❌ Önce `/ses-katıl` kullan!');
-            try{
-                const s=await play.stream(link,{discordPlayerCompatibility:true});
-                const r=createAudioResource(s.stream,{inputType:s.type});
-                player.play(r);
-                await i.editReply(`🎵 Çalıyor: ${link}`);
-            }catch(e){await i.editReply('❌ Çalınamadı! YouTube linki olduğundan emin ol.');}
-        }
-        else if(n==='aktiflik-sıralama'){
-            const s=Object.entries(VERI.aktiflik).sort((a,b)=>b[1]-a[1]).slice(0,10);
-            const embed=new EmbedBuilder()
-               .setColor(0xFFD700)
-               .setTitle('📊 Aktiflik Sıralaması - Top 10')
-               .setDescription(s.length?s.map((v,i)=>`**${i+1}.** <@${v[0]}> - ${v[1]} mesaj`).join('\n'):'Veri yok')
-               .setFooter({text:'TSA Aktiflik Sistemi'})
-               .setTimestamp();
-            await i.reply({embeds:[embed]});
-        }
-        else if(n==='temizle'){
-            const a=i.options.getInteger('adet');
-            if(a<1||a>100)return i.reply({content:'❌ 1-100 arası!',flags:64});
-            await i.channel.bulkDelete(a,true);
-            await i.reply({content:`✅ ${a} mesaj silindi!`,flags:64});
-        }
-        else if(n==='duyuru'){
-            const m=i.options.getString('mesaj');
-            const k=i.options.getChannel('kanal')||i.channel;
-            const embed=new EmbedBuilder()
-               .setColor(0xFF0000)
-               .setTitle('📢 TSA DUYURU')
-               .setDescription(m)
-               .setAuthor({name:i.user.username,iconURL:i.user.displayAvatarURL()})
-               .setFooter({text:'Turkish Special Army Komutanlığı'})
-               .setTimestamp();
-            await k.send({content:'@everyone',embeds:[embed]});
-            await i.reply({content:`✅ Duyuru ${k} kanalına gönderildi!`,flags:64});
-        }
-        else if(n==='izin-al'){
-            const s=i.options.getString('sebep'),g=i.options.getInteger('gun');
-            const bitis=new Date();bitis.setDate(bitis.getDate()+g);
-            VERI.izinler[i.user.id]={sebep:s,bitis:bitis.toISOString(),tarih:new Date().toISOString()};
-            veriKaydet();
-            const embed=new EmbedBuilder()
-               .setColor(0x00FF00)
-               .setTitle('✅ İzin Talebi Onaylandı')
-               .addFields(
-                    {name:'Asker',value:`${i.user}`,inline:true},
-                    {name:'Süre',value:`${g} gün`,inline:true},
-                    {name:'Bitiş',value:`<t:${Math.floor(bitis.getTime()/1000)}:D>`,inline:true},
-                    {name:'Sebep',value:s,inline:false}
-                );
-            await i.reply({embeds:[embed]});
-        }
-        else if(n==='izin-iptal'){
-            if(!VERI.izinler[i.user.id])return i.reply({content:'❌ Aktif iznin yok!',flags:64});
-            delete VERI.izinler[i.user.id];veriKaydet();
-            await i.reply({content:'✅ İznin iptal edildi!',flags:64});
-        }
-        else if(n==='izin-listesi'){
-            const l=Object.entries(VERI.izinler);
-            if(l.length===0)return i.reply({content:'📭 Aktif izin yok.',flags:64});
-            const embed=new EmbedBuilder()
-               .setColor(0x0099FF)
-               .setTitle('📋 Aktif İzin Listesi')
-               .setDescription(l.map(([id,v])=>`<@${id}> - ${v.sebep} - Bitiş: <t:${Math.floor(new Date(v.bitis).getTime()/1000)}:R>`).join('\n'))
-               .setFooter({text:`Toplam ${l.length} kişi izinli`});
-            await i.reply({embeds:[embed]});
-        }
-        else if(n==='grup'){
-            const embed=new EmbedBuilder()
-               .setColor(0x0099FF)
-               .setTitle('🪖 TSA Roblox Grubu')
-               .setDescription(`**Resmi TSA Grubuna Katıl:**\n${CONFIG.GRUP_LINK}`)
-               .setURL(CONFIG.GRUP_LINK)
-               .setThumbnail('https://tr.rbxcdn.com/180DAY-AvatarHeadshot-A1A1A1-Png/150/150/AvatarHeadshot/Webp/noFilter')
-               .setFooter({text:'Turkish Special Army'});
-            await i.reply({embeds:[embed]});
-        }
-        else if(n==='oyun'){
-            const embed=new EmbedBuilder()
-               .setColor(0x00FF00)
-               .setTitle('🎮 TSA Türk Asker Oyunu')
-               .setDescription(`**Oyuna Giriş:**\n${CONFIG.OYUN_LINK}`)
-               .setURL(CONFIG.OYUN_LINK)
-               .setImage('https://tr.rbxcdn.com/180DAY-GameIcon-A1A1A1A1A1A1A1-Png/256/256/GameIcon/Webp/noFilter')
-               .setFooter({text:'TSA Resmi Oyunu'});
-            await i.reply({embeds:[embed]});
-        }
-        else if(n==='dm'){
-            const k=i.options.getUser('kullanici');
-            const m=i.options.getString('mesaj');
-            const embed=new EmbedBuilder()
-               .setColor(0x0099FF)
-               .setTitle('📩 TSA Komutanlığından Mesaj')
-               .setDescription(m)
-               .setAuthor({name:i.user.username,iconURL:i.user.displayAvatarURL()})
-               .setFooter({text:'Turkish Special Army'})
-               .setTimestamp();
-            try{
-                await k.send({embeds:[embed]});
-                await i.reply({content:`✅ ${k} kullanıcısına DM gönderildi!`,flags:64});
-            }catch(e){
-                await i.reply({content:`❌ DM gönderilemedi! Kullanıcı DM'leri kapalı olabilir.`,flags:64});
-            }
-        }
-    }catch(e){
-        console.error('[Komut Hatası]',e);
-        if(i.deferred||i.replied){await i.editReply('❌ Hata oluştu!').catch(()=>{});}
-        else{await i.reply({content:'❌ Hata!',flags:64}).catch(()=>{});}
+    if(i.commandName === 'dm-duyuru') {
+        if(!i.member.roles.cache.has(CONFIG.DM_YETKILI_ROL)) return i.reply({embeds: [createEmbed('❌ Yetki Hatası', 'Yetkiniz yok.', 0xFF0000)], ephemeral: true});
+        const k = i.options.getUser('kullanici');
+        const m = i.options.getString('mesaj');
+        try {
+            await k.send({content: `${k}`, embeds: [createEmbed('📢 ÖZEL BİLDİRİM', `Merhaba ${k},\n\n${m}`, 0xFFD700)]});
+            await i.reply({embeds: [createEmbed('✅ Gönderildi', `${k} kişisine iletildi.`, 0x00FF00)], ephemeral: true});
+        } catch(e) { await i.reply({embeds: [createEmbed('❌ Hata', 'DM kapalı.', 0xFF0000)], ephemeral: true}); }
+    }
+    else if(i.commandName === 'izin-al') {
+        const s = i.options.getString('sebep'), g = i.options.getInteger('gun');
+        const b = new Date(); b.setDate(b.getDate() + g);
+        VERI.izinler[i.user.id] = {sebep: s, bitis: b.toISOString()};
+        veriKaydet();
+        if(CONFIG.IZIN_ROL_ID) await i.member.roles.add(CONFIG.IZIN_ROL_ID).catch(()=>{});
+        await i.reply({embeds: [createEmbed('✅ Onaylandı', `**${i.user.username}**, izniniz kaydedildi.\nBitiş: <t:${Math.floor(b.getTime()/1000)}:D>`, 0x00FF00)], ephemeral: true});
+    }
+    else if(i.commandName === 'izin-iptal') {
+        delete VERI.izinler[i.user.id]; veriKaydet();
+        if(CONFIG.IZIN_ROL_ID) await i.member.roles.remove(CONFIG.IZIN_ROL_ID).catch(()=>{});
+        await i.reply({embeds: [createEmbed('✅ İptal Edildi', 'İzniniz sistemden silindi.', 0xFFFF00)], ephemeral: true});
+    }
+    else if(i.commandName === 'izin-listesi') {
+        const l = Object.entries(VERI.izinler);
+        if(l.length === 0) return i.reply({embeds: [createEmbed('📭 Liste Boş', 'Şu an izinli kimse yok.', 0x0099FF)], ephemeral: true});
+        await i.reply({embeds: [createEmbed('📋 Aktif İzinliler', l.map(([id,v])=>`<@${id}>: ${v.sebep}`).join('\n'))], ephemeral: true});
+    }
+    else if(i.commandName === 'ses-katıl') {
+        const k = i.options.getChannel('kanal');
+        joinVoiceChannel({channelId: k.id, guildId: i.guild.id, adapterCreator: i.guild.voiceAdapterCreator}).subscribe(player);
+        await i.reply({embeds: [createEmbed('🔊 Bağlanıldı', `${k} kanalına giriş yapıldı.`, 0x00FF00)], ephemeral: true});
+    }
+    else if(i.commandName === 'ses-çıkış') {
+        const c = getVoiceConnection(i.guild.id);
+        if(c) { c.destroy(); await i.reply({embeds: [createEmbed('🔇 Çıkış Yapıldı', 'Ses kanalından ayrıldım.', 0xFF0000)], ephemeral: true}); }
+    }
+    else if(i.commandName === 'grup') {
+        await i.reply({embeds: [createEmbed('🪖 TSA Grubu', `[Grup Linki İçin Tıkla](${CONFIG.GRUP_LINK})`, 0x0099FF)]});
+    }
+    else if(i.commandName === 'oyun') {
+        await i.reply({embeds: [createEmbed('🎮 TSA Oyunu', `[Oyuna Gitmek İçin Tıkla](${CONFIG.OYUN_LINK})`, 0x00FF00)]});
+    }
+    else if(i.commandName === 'temizle') {
+        const a = i.options.getInteger('adet');
+        await i.channel.bulkDelete(a, true);
+        await i.reply({embeds: [createEmbed('🧹 Temizlendi', `${a} adet mesaj silindi.`, 0x00FF00)], ephemeral: true});
+    }
+    else if(i.commandName === 'aktiflik-sıralama') {
+        const s = Object.entries(VERI.aktiflik).sort((a,b)=>b[1]-a[1]).slice(0,10);
+        await i.reply({embeds: [createEmbed('📊 Aktiflik', s.map((v,n)=>`${n+1}. <@${v[0]}> - **${v[1]} mesaj**`).join('\n') || 'Veri yok', 0xFFD700)]});
     }
 });
-
-client.on('error', console.error);
-process.on('unhandledRejection', console.error);
 
 client.login(CONFIG.TOKEN);
