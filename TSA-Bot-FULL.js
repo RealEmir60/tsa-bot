@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, REST, Routes, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, REST, Routes, PermissionFlagsBits, ActivityType } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, NoSubscriberBehavior } = require('@discordjs/voice');
 const play = require('play-dl');
 const fs = require('fs');
@@ -9,8 +9,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.MessageContent
     ]
 });
 
@@ -40,12 +39,18 @@ const komutlar = [
     new SlashCommandBuilder().setName('izin-iptal').setDescription('İznini iptal eder'),
     new SlashCommandBuilder().setName('izin-listesi').setDescription('Aktif izinleri listeler'),
     new SlashCommandBuilder().setName('grup').setDescription('TSA Roblox grup linkini atar'),
-    new SlashCommandBuilder().setName('oyun').setDescription('TSA Roblox oyun linkini atar'),
-    new SlashCommandBuilder().setName('dm').setDescription('Kullanıcıya DM gönderir').addUserOption(o=>o.setName('kullanici').setDescription('Kullanıcı').setRequired(true)).addStringOption(o=>o.setName('mesaj').setDescription('Mesaj içeriği').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    new SlashCommandBuilder().setName('oyun').setDescription('TSA Roblox oyun linkini atar')
 ].map(c=>c.toJSON());
 
 client.once('clientReady', async () => {
     console.log(`[Discord] | TSA Bot | ${client.user.tag} aktif!`);
+    
+    // Durumu ayarla
+    client.user.setPresence({
+        activities: [{ name: 'TSA- Turkish Special Army', type: ActivityType.Playing }],
+        status: 'online'
+    });
+    
     const rest = new REST({version:'10'}).setToken(CONFIG.TOKEN);
     try{await rest.put(Routes.applicationCommands(client.user.id),{body:komutlar});console.log(`[Discord] ✅ ${komutlar.length} komut yüklendi`)}catch(e){console.error(e)}
 });
@@ -59,7 +64,7 @@ client.on('messageCreate', async msg => {
            .setDescription(`**Katılmak için tıkla:**\n${CONFIG.GRUP_LINK}`)
            .setURL(CONFIG.GRUP_LINK)
            .setThumbnail('https://tr.rbxcdn.com/180DAY-AvatarHeadshot-A1A1A1-Png/150/150/AvatarHeadshot/Webp/noFilter')
-           .setFooter({text: 'Turkish Armed Forces'});
+           .setFooter({text: 'Turkish Special Army'});
         await msg.reply({embeds: [embed]});
     }
 
@@ -122,7 +127,7 @@ client.on('interactionCreate', async i => {
                .setTitle('📢 TSA DUYURU')
                .setDescription(m)
                .setAuthor({name:i.user.username,iconURL:i.user.displayAvatarURL()})
-               .setFooter({text:'Turkish Armed Forces Komutanlığı'})
+               .setFooter({text:'Turkish Special Army Komutanlığı'})
                .setTimestamp();
             await k.send({content:'@everyone',embeds:[embed]});
             await i.reply({content:`✅ Duyuru ${k} kanalına gönderildi!`,ephemeral:true});
@@ -165,7 +170,7 @@ client.on('interactionCreate', async i => {
                .setDescription(`**Resmi TSA Grubuna Katıl:**\n${CONFIG.GRUP_LINK}`)
                .setURL(CONFIG.GRUP_LINK)
                .setThumbnail('https://tr.rbxcdn.com/180DAY-AvatarHeadshot-A1A1A1-Png/150/150/AvatarHeadshot/Webp/noFilter')
-               .setFooter({text:'Turkish Armed Forces'});
+               .setFooter({text:'Turkish Special Army'});
             await i.reply({embeds:[embed]});
         }
         else if(n==='oyun'){
@@ -177,23 +182,6 @@ client.on('interactionCreate', async i => {
                .setImage('https://tr.rbxcdn.com/180DAY-GameIcon-A1A1A1A1A1A1A1A1A1-Png/256/256/GameIcon/Webp/noFilter')
                .setFooter({text:'TSA Resmi Oyunu'});
             await i.reply({embeds:[embed]});
-        }
-        else if(n==='dm'){
-            const k=i.options.getUser('kullanici');
-            const m=i.options.getString('mesaj');
-            const embed=new EmbedBuilder()
-               .setColor(0x0099FF)
-               .setTitle('📩 TSA Komutanlığından Mesaj')
-               .setDescription(m)
-               .setAuthor({name:i.user.username,iconURL:i.user.displayAvatarURL()})
-               .setFooter({text:'Turkish Armed Forces'})
-               .setTimestamp();
-            try{
-                await k.send({embeds:[embed]});
-                await i.reply({content:`✅ ${k} kullanıcısına DM gönderildi!`,ephemeral:true});
-            }catch(e){
-                await i.reply({content:`❌ DM gönderilemedi! Kullanıcı DM'leri kapalı olabilir.`,ephemeral:true});
-            }
         }
     }catch(e){console.error(e);await i.reply({content:'❌ Hata!',ephemeral:true}).catch(()=>{})}
 });
