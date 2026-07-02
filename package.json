@@ -1,14 +1,12 @@
 {
-  "name": "tsa-bot",
+  "name": "tsa-ses-bot",
   "version": "1.0.0",
-  "main": "TSA-Bot-FULL.js",
-  "scripts": {
-    "start": "node TSA-Bot-FULL.js"
-  },
+  "main": "TSA-Ses-Bot.js",
+  "scripts": { "start": "node TSA-Ses-Bot.js" },
   "dependencies": {
     "discord.js": "^14.14.1",
     "@discordjs/voice": "^0.16.1",
-    "node-fetch": "^2.7.0",
+    "play-dl": "^1.9.7",
     "dotenv": "^16.4.5"
   }
 }
