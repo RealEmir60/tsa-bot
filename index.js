@@ -17,6 +17,7 @@ const CONFIG = {
     TOKEN: process.env.DISCORD_TOKEN,
     GROUP_ID: parseInt(process.env.GROUP_ID),
     DM_YETKILI_ROL: '1518357646971764859',
+    IZIN_ROL_ID: process.env.IZIN_ROL_ID,
     VERI_DOSYASI: './tsa_veri.json'
 };
 
@@ -36,8 +37,11 @@ const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavi
 const komutlar = [
     new SlashCommandBuilder().setName('ses-katıl').setDescription('Botu sesli kanala sokar').addChannelOption(o=>o.setName('kanal').setDescription('Kanal').setRequired(true)),
     new SlashCommandBuilder().setName('ses-çıkış').setDescription('Botu sesli kanaldan çıkarır'),
-    new SlashCommandBuilder().setName('şarkı-çal').setDescription('YouTube linki ile müzik çalar').addStringOption(o=>o.setName('link').setDescription('Link').setRequired(true)),
+    new SlashCommandBuilder().setName('şarkı-çal').setDescription('Link ile müzik çalar').addStringOption(o=>o.setName('link').setDescription('Link').setRequired(true)),
     new SlashCommandBuilder().setName('dm-mesaj').setDescription('Özel DM atar').addUserOption(o=>o.setName('kullanici').setDescription('Kullanıcı').setRequired(true)).addStringOption(o=>o.setName('mesaj').setDescription('Mesaj').setRequired(true)),
+    new SlashCommandBuilder().setName('izin-al').setDescription('İzin talebi oluştur').addStringOption(o=>o.setName('sebep').setDescription('Sebep').setRequired(true)).addIntegerOption(o=>o.setName('gun').setDescription('Gün').setRequired(true)),
+    new SlashCommandBuilder().setName('izin-iptal').setDescription('İzni iptal eder'),
+    new SlashCommandBuilder().setName('izin-listesi').setDescription('İzinlileri gösterir'),
     new SlashCommandBuilder().setName('durum').setDescription('Sunucu durumunu gösterir'),
     new SlashCommandBuilder().setName('rütbeler').setDescription('Grup rütbelerini listeler'),
     new SlashCommandBuilder().setName('aktiflik').setDescription('Aktiflik raporu').addUserOption(o=>o.setName('kullanici').setDescription('Asker').setRequired(false))
@@ -55,6 +59,7 @@ const createEmbed = (title, desc, color = 0x0099FF) => new EmbedBuilder().setCol
 client.on('interactionCreate', async i => {
     if(!i.isChatInputCommand()) return;
 
+    // --- MÜZİK KOMUTLARI ---
     if(i.commandName === 'şarkı-çal') {
         const link = i.options.getString('link');
         const channel = i.member.voice.channel;
@@ -67,45 +72,57 @@ client.on('interactionCreate', async i => {
         i.reply('🎶 Müzik başlatıldı.');
     }
     
+    // --- DM VE İZİN KOMUTLARI ---
     else if(i.commandName === 'dm-mesaj') {
         if(!i.member.roles.cache.has(CONFIG.DM_YETKILI_ROL)) return i.reply({content: 'Yetkin yok!', ephemeral: true});
         const k = i.options.getUser('kullanici');
-        const m = i.options.getString('mesaj');
-        try { await k.send(m); i.reply({content: 'DM iletildi.', ephemeral: true}); } 
+        try { await k.send(i.options.getString('mesaj')); i.reply({content: 'DM iletildi.', ephemeral: true}); } 
         catch(e) { i.reply({content: 'Kullanıcının DM kutusu kapalı.', ephemeral: true}); }
     }
-
-    else if(i.commandName === 'durum') {
-        i.reply({embeds: [createEmbed('🎖️ TSA Karargah', `Sunucuda ${i.guild.memberCount} asker var.`)]});
+    else if(i.commandName === 'izin-al') {
+        const s = i.options.getString('sebep'), g = i.options.getInteger('gun');
+        const b = new Date(); b.setDate(b.getDate() + g);
+        VERI.izinler[i.user.id] = {sebep: s, bitis: b.toISOString()};
+        veriKaydet();
+        if(CONFIG.IZIN_ROL_ID) i.member.roles.add(CONFIG.IZIN_ROL_ID).catch(()=>{});
+        i.reply({content: `✅ ${g} gün izin alındı. Bitiş: ${b.toLocaleDateString()}`, ephemeral: true});
+    }
+    else if(i.commandName === 'izin-iptal') {
+        delete VERI.izinler[i.user.id]; veriKaydet();
+        if(CONFIG.IZIN_ROL_ID) i.member.roles.remove(CONFIG.IZIN_ROL_ID).catch(()=>{});
+        i.reply({content: '✅ İzniniz iptal edildi.', ephemeral: true});
+    }
+    else if(i.commandName === 'izin-listesi') {
+        const l = Object.entries(VERI.izinler).map(([id,v])=>`<@${id}>: ${v.sebep}`).join('\n');
+        i.reply({embeds: [createEmbed('📋 Aktif İzinliler', l || 'Aktif izinli yok.')]});
     }
 
+    // --- DİĞER KOMUTLAR ---
     else if(i.commandName === 'rütbeler') {
         await i.deferReply();
         try {
             const roles = await noblox.getRoles(CONFIG.GROUP_ID);
-            const list = roles.map(r => `• **${r.Name}**`).join('\n');
-            i.editReply({embeds: [createEmbed('🎖️ Rütbeler', list)]});
+            i.editReply({embeds: [createEmbed('🎖️ Rütbeler', roles.map(r => `• **${r.Name}**`).join('\n'))]});
         } catch(e) { i.editReply('Hata oluştu.'); }
-    }
-
-    else if(i.commandName === 'aktiflik') {
-        const h = i.options.getUser('kullanici') || i.user;
-        i.reply({embeds: [createEmbed('📊 Aktiflik', `${h.username}: ${VERI.sesSuresi[h.id] || 0} saniye ses, ${VERI.aktiflik[h.id] || 0} mesaj.`)]});
     }
     
     else if(i.commandName === 'ses-katıl') {
-        const channel = i.options.getChannel('kanal');
-        joinVoiceChannel({channelId: channel.id, guildId: i.guild.id, adapterCreator: i.guild.voiceAdapterCreator});
+        joinVoiceChannel({channelId: i.options.getChannel('kanal').id, guildId: i.guild.id, adapterCreator: i.guild.voiceAdapterCreator});
         i.reply('✅ Bağlanıldı.');
     }
-    
     else if(i.commandName === 'ses-çıkış') {
         getVoiceConnection(i.guild.id)?.destroy();
         i.reply('🔇 Çıkış yapıldı.');
     }
+    else if(i.commandName === 'durum') {
+        i.reply({embeds: [createEmbed('🎖️ TSA Karargah', `Sunucuda ${i.guild.memberCount} asker var.`)]});
+    }
+    else if(i.commandName === 'aktiflik') {
+        const h = i.options.getUser('kullanici') || i.user;
+        i.reply({embeds: [createEmbed('📊 Aktiflik', `${h.username}: ${Math.floor((VERI.sesSuresi[h.id] || 0)/60)} dk ses, ${VERI.aktiflik[h.id] || 0} mesaj.`)]});
+    }
 });
 
-// --- SES TAKİP & MESAJ SAYACI ---
 client.on('messageCreate', msg => {
     if(msg.author.bot) return;
     VERI.aktiflik[msg.author.id] = (VERI.aktiflik[msg.author.id] || 0) + 1;
