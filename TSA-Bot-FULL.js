@@ -2,14 +2,20 @@ const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, REST, Rout
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, NoSubscriberBehavior } = require('@discordjs/voice');
 const play = require('play-dl');
 const fs = require('fs');
+const express = require('express');
 require('dotenv').config();
+
+const app = express();
+app.get('/', (req, res) => res.send('TSA Bot Aktif - Turkish Special Army'));
+app.listen(process.env.PORT || 3000, () => console.log('[Web] Port aktif'));
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
     ]
 });
 
@@ -20,11 +26,18 @@ const CONFIG = {
     VERI_DOSYASI: './tsa_veri.json'
 };
 
+if (!CONFIG.TOKEN) {
+    console.error('[HATA] DISCORD_TOKEN bulunamadı!');
+    process.exit(1);
+}
+
 let VERI = { izinler: {}, aktiflik: {} };
 if (fs.existsSync(CONFIG.VERI_DOSYASI)) {
     try { VERI = JSON.parse(fs.readFileSync(CONFIG.VERI_DOSYASI)); } catch(e) {}
 }
-function veriKaydet(){ fs.writeFileSync(CONFIG.VERI_DOSYASI, JSON.stringify(VERI, null, 2)); }
+function veriKaydet(){ 
+    try { fs.writeFileSync(CONFIG.VERI_DOSYASI, JSON.stringify(VERI, null, 2)); } catch(e) { console.error(e); }
+}
 
 const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
 
@@ -39,20 +52,23 @@ const komutlar = [
     new SlashCommandBuilder().setName('izin-iptal').setDescription('İznini iptal eder'),
     new SlashCommandBuilder().setName('izin-listesi').setDescription('Aktif izinleri listeler'),
     new SlashCommandBuilder().setName('grup').setDescription('TSA Roblox grup linkini atar'),
-    new SlashCommandBuilder().setName('oyun').setDescription('TSA Roblox oyun linkini atar')
+    new SlashCommandBuilder().setName('oyun').setDescription('TSA Roblox oyun linkini atar'),
+    new SlashCommandBuilder().setName('dm').setDescription('Kullanıcıya DM gönderir').addUserOption(o=>o.setName('kullanici').setDescription('Kullanıcı').setRequired(true)).addStringOption(o=>o.setName('mesaj').setDescription('Mesaj içeriği').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
 ].map(c=>c.toJSON());
 
 client.once('clientReady', async () => {
     console.log(`[Discord] | TSA Bot | ${client.user.tag} aktif!`);
     
-    // Durumu ayarla
     client.user.setPresence({
         activities: [{ name: 'TSA- Turkish Special Army', type: ActivityType.Playing }],
         status: 'online'
     });
     
     const rest = new REST({version:'10'}).setToken(CONFIG.TOKEN);
-    try{await rest.put(Routes.applicationCommands(client.user.id),{body:komutlar});console.log(`[Discord] ✅ ${komutlar.length} komut yüklendi`)}catch(e){console.error(e)}
+    try{
+        await rest.put(Routes.applicationCommands(client.user.id),{body:komutlar});
+        console.log(`[Discord] ✅ ${komutlar.length} komut yüklendi`);
+    }catch(e){console.error('[Komut Yükleme Hatası]', e)}
 });
 
 client.on('messageCreate', async msg => {
@@ -80,16 +96,16 @@ client.on('interactionCreate', async i => {
     try {
         if(n==='ses-katıl'){
             const k=i.options.getChannel('kanal');
-            if(!k.isVoiceBased())return i.reply({content:'❌ Ses kanalı seç!',ephemeral:true});
+            if(!k.isVoiceBased())return i.reply({content:'❌ Ses kanalı seç!',flags:64});
             const c=joinVoiceChannel({channelId:k.id,guildId:i.guild.id,adapterCreator:i.guild.voiceAdapterCreator});
             c.subscribe(player);
-            await i.reply({content:`✅ ${k} kanalına katıldım!`,ephemeral:true});
+            await i.reply({content:`✅ ${k} kanalına katıldım!`,flags:64});
         }
         else if(n==='ses-çıkış'){
             const c=getVoiceConnection(i.guild.id);
-            if(!c)return i.reply({content:'❌ Kanalda değilim!',ephemeral:true});
+            if(!c)return i.reply({content:'❌ Kanalda değilim!',flags:64});
             player.stop();c.destroy();
-            await i.reply({content:'✅ Sesli kanaldan çıktım!',ephemeral:true});
+            await i.reply({content:'✅ Sesli kanaldan çıktım!',flags:64});
         }
         else if(n==='çal'){
             await i.deferReply();
@@ -101,7 +117,7 @@ client.on('interactionCreate', async i => {
                 const r=createAudioResource(s.stream,{inputType:s.type});
                 player.play(r);
                 await i.editReply(`🎵 Çalıyor: ${link}`);
-            }catch(e){await i.editReply('❌ Çalınamadı!');}
+            }catch(e){await i.editReply('❌ Çalınamadı! YouTube linki olduğundan emin ol.');}
         }
         else if(n==='aktiflik-sıralama'){
             const s=Object.entries(VERI.aktiflik).sort((a,b)=>b[1]-a[1]).slice(0,10);
@@ -115,9 +131,9 @@ client.on('interactionCreate', async i => {
         }
         else if(n==='temizle'){
             const a=i.options.getInteger('adet');
-            if(a<1||a>100)return i.reply({content:'❌ 1-100 arası!',ephemeral:true});
+            if(a<1||a>100)return i.reply({content:'❌ 1-100 arası!',flags:64});
             await i.channel.bulkDelete(a,true);
-            await i.reply({content:`✅ ${a} mesaj silindi!`,ephemeral:true});
+            await i.reply({content:`✅ ${a} mesaj silindi!`,flags:64});
         }
         else if(n==='duyuru'){
             const m=i.options.getString('mesaj');
@@ -130,7 +146,7 @@ client.on('interactionCreate', async i => {
                .setFooter({text:'Turkish Special Army Komutanlığı'})
                .setTimestamp();
             await k.send({content:'@everyone',embeds:[embed]});
-            await i.reply({content:`✅ Duyuru ${k} kanalına gönderildi!`,ephemeral:true});
+            await i.reply({content:`✅ Duyuru ${k} kanalına gönderildi!`,flags:64});
         }
         else if(n==='izin-al'){
             const s=i.options.getString('sebep'),g=i.options.getInteger('gun');
@@ -149,13 +165,13 @@ client.on('interactionCreate', async i => {
             await i.reply({embeds:[embed]});
         }
         else if(n==='izin-iptal'){
-            if(!VERI.izinler[i.user.id])return i.reply({content:'❌ Aktif iznin yok!',ephemeral:true});
+            if(!VERI.izinler[i.user.id])return i.reply({content:'❌ Aktif iznin yok!',flags:64});
             delete VERI.izinler[i.user.id];veriKaydet();
-            await i.reply({content:'✅ İznin iptal edildi!',ephemeral:true});
+            await i.reply({content:'✅ İznin iptal edildi!',flags:64});
         }
         else if(n==='izin-listesi'){
             const l=Object.entries(VERI.izinler);
-            if(l.length===0)return i.reply({content:'📭 Aktif izin yok.',ephemeral:true});
+            if(l.length===0)return i.reply({content:'📭 Aktif izin yok.',flags:64});
             const embed=new EmbedBuilder()
                .setColor(0x0099FF)
                .setTitle('📋 Aktif İzin Listesi')
@@ -179,9 +195,35 @@ client.on('interactionCreate', async i => {
                .setTitle('🎮 TSA Türk Asker Oyunu')
                .setDescription(`**Oyuna Giriş:**\n${CONFIG.OYUN_LINK}`)
                .setURL(CONFIG.OYUN_LINK)
-               .setImage('https://tr.rbxcdn.com/180DAY-GameIcon-A1A1A1A1A1A1A1A1A1-Png/256/256/GameIcon/Webp/noFilter')
+               .setImage('https://tr.rbxcdn.com/180DAY-GameIcon-A1A1A1A1A1A1A1-Png/256/256/GameIcon/Webp/noFilter')
                .setFooter({text:'TSA Resmi Oyunu'});
             await i.reply({embeds:[embed]});
         }
-    }catch(e){console.error(e);await i.reply({content:'❌ Hata!',ephemeral:true}).catch(()=>{})}
+        else if(n==='dm'){
+            const k=i.options.getUser('kullanici');
+            const m=i.options.getString('mesaj');
+            const embed=new EmbedBuilder()
+               .setColor(0x0099FF)
+               .setTitle('📩 TSA Komutanlığından Mesaj')
+               .setDescription(m)
+               .setAuthor({name:i.user.username,iconURL:i.user.displayAvatarURL()})
+               .setFooter({text:'Turkish Special Army'})
+               .setTimestamp();
+            try{
+                await k.send({embeds:[embed]});
+                await i.reply({content:`✅ ${k} kullanıcısına DM gönderildi!`,flags:64});
+            }catch(e){
+                await i.reply({content:`❌ DM gönderilemedi! Kullanıcı DM'leri kapalı olabilir.`,flags:64});
+            }
+        }
+    }catch(e){
+        console.error('[Komut Hatası]',e);
+        if(i.deferred||i.replied){await i.editReply('❌ Hata oluştu!').catch(()=>{});}
+        else{await i.reply({content:'❌ Hata!',flags:64}).catch(()=>{});}
+    }
 });
+
+client.on('error', console.error);
+process.on('unhandledRejection', console.error);
+
+client.login(CONFIG.TOKEN);
