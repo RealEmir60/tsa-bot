@@ -6,13 +6,11 @@ const express = require('express');
 const noblox = require('noblox.js');
 require('dotenv').config();
 
-// WEB
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('TSA Bot Aktif'));
 app.listen(PORT, '0.0.0.0', () => console.log(`[Web] ${PORT}`));
 
-// CONFIG
 const CONFIG = {
     TOKEN: process.env.DISCORD_TOKEN,
     GROUP_ID: parseInt(process.env.GROUP_ID) || 972348115,
@@ -106,8 +104,7 @@ client.on('interactionCreate', async i => {
         const sayi = VERI.uyarilar[hedef.id].length;
         const roller = [CONFIG.UYARI_1_ROL_ID, CONFIG.UYARI_2_ROL_ID, CONFIG.UYARI_3_ROL_ID];
         if(roller[sayi-1]) await hedef.roles.add(roller[sayi-1]).catch(()=>{});
-        try{ await hedef.send({embeds:[new EmbedBuilder().setColor(0xFF0000).setTitle('⚠️ TSA UYARI').setDescription(`Sebep: ${sebep}
-Uyarı: ${sayi}/3`)]});}catch{}
+        try{ await hedef.send({embeds:[new EmbedBuilder().setColor(0xFF0000).setTitle('⚠️ TSA UYARI').setDescription(`Sebep: ${sebep}\nUyarı: ${sayi}/3`)]});}catch{}
         if(sayi===3) setTimeout(()=>hedef.kick('3 uyarı').catch(()=>{}),5000);
         return i.reply({embeds:[createEmbed('Uyarı Verildi', `${hedef} - ${sebep} (${sayi}/3)`, 0xFFA500)]});
     }
@@ -123,8 +120,8 @@ Uyarı: ${sayi}/3`)]});}catch{}
     if(cmd==='sicil'){
         const hedef = i.options.getMember('kullanici')||i.member; const u = VERI.uyarilar[hedef.id]||[];
         if(!u.length) return i.reply({embeds:[createEmbed('Temiz Sicil','Yok',0x00FF00)]});
-        return i.reply({embeds:[createEmbed(`Sicil: ${hedef.user.username}`, u.map((x,j)=>`${j+1}. ${x.sebep}`).join('
-'), 0xFFA500)], ephemeral:true});
+        const desc = u.map((x,j)=>`${j+1}. ${x.sebep}`).join('\n');
+        return i.reply({embeds:[createEmbed(`Sicil: ${hedef.user.username}`, desc, 0xFFA500)], ephemeral:true});
     }
 
     if(cmd==='profil'){
@@ -146,30 +143,6 @@ Uyarı: ${sayi}/3`)]});}catch{}
         if(!i.member.roles.cache.has(CONFIG.YETKILI_ROL_ID)) return i.reply({content:'Yetkin yok', ephemeral:true});
         const u = i.options.getMember('kullanici'); const r = i.options.getRole('rol'); await u.roles.remove(r); return i.reply(`✅ ${u} -${r.name}`);
     }
-
-    if(cmd==='grup-bilgi'){ await i.deferReply(); try{ const g = await noblox.getGroup(CONFIG.GROUP_ID); return i.editReply(`${g.name} - ${g.memberCount} üye`);}catch{ return i.editReply('Hata');}}
-    if(cmd==='rütbeler'){ await i.deferReply(); try{ const rs = await noblox.getRoles(CONFIG.GROUP_ID); return i.editReply(rs.map(r=>r.name).join(', '));}catch{ return i.editReply('Hata');}}
-    if(cmd==='grup') return i.reply('https://www.roblox.com/groups/972348115');
-    if(cmd==='oyun') return i.reply('https://www.roblox.com/games/138257110169831');
-    if(cmd==='temizle'){ const m=i.options.getInteger('miktar'); await i.channel.bulkDelete(m,true); return i.reply({content:`${m} silindi`, ephemeral:true});}
-    if(cmd==='kick'){ const u=i.options.getUser('kullanici'); await i.guild.members.kick(u.id); return i.reply(`${u.tag} atıldı`);}
-    if(cmd==='ban'){ const u=i.options.getUser('kullanici'); await i.guild.members.ban(u.id); return i.reply(`${u.tag} banlandı`);}
-    if(cmd==='kilitle'){ await i.channel.permissionOverwrites.edit(i.guild.roles.everyone,{SendMessages:false}); return i.reply('Kilitlendi');}
-    if(cmd==='kilit-aç'){ await i.channel.permissionOverwrites.edit(i.guild.roles.everyone,{SendMessages:null}); return i.reply('Açıldı');}
-    if(cmd==='izin-al'){ const s=i.options.getString('sebep'); const g=i.options.getInteger('gun'); VERI.izinler[i.user.id]={sebep:s, bitis:new Date(Date.now()+g*86400000).toISOString()}; veriKaydet(); if(CONFIG.IZIN_ROL_ID) await i.member.roles.add(CONFIG.IZIN_ROL_ID).catch(()=>{}); return i.reply({content:'İzin alındı', ephemeral:true});}
-    if(cmd==='izin-iptal'){ delete VERI.izinler[i.user.id]; veriKaydet(); if(CONFIG.IZIN_ROL_ID) await i.member.roles.remove(CONFIG.IZIN_ROL_ID).catch(()=>{}); return i.reply({content:'İptal', ephemeral:true});}
-    if(cmd==='izin-listesi'){ const l=Object.entries(VERI.izinler).map(([id,v])=>`<@${id}>: ${v.sebep}`).join('
-')||'Yok'; return i.reply({embeds:[createEmbed('İzinliler',l)]});}
-    if(cmd==='eğitim-duyuru'){ const k=i.options.getString('konu'); const s=i.options.getString('saat'); const y=i.options.getString('yer'); return i.reply({content:'@everyone', embeds:[new EmbedBuilder().setTitle('EĞİTİM').setDescription(`${k}
-${s}
-${y}`)]});}
-    if(cmd==='dm-mesaj'){ if(!i.member.roles.cache.has(CONFIG.DM_YETKILI_ROL)) return i.reply({content:'Yetkin yok',ephemeral:true}); const u=i.options.getUser('kullanici'); const m=i.options.getString('mesaj'); await u.send(m).catch(()=>{}); return i.reply({content:'Gönderildi',ephemeral:true});}
-    if(cmd==='ses-katıl'){ const k=i.options.getChannel('kanal'); joinVoiceChannel({channelId:k.id,guildId:i.guild.id,adapterCreator:i.guild.voiceAdapterCreator}); return i.reply('Girildi');}
-    if(cmd==='ses-çıkış'){ getVoiceConnection(i.guild.id)?.destroy(); return i.reply('Çıkıldı');}
-    if(cmd==='şarkı-çal'){ const l=i.options.getString('link'); const vc=i.member.voice.channel; if(!vc) return i.reply({content:'Seste değilsin',ephemeral:true}); const conn=joinVoiceChannel({channelId:vc.id,guildId:i.guild.id,adapterCreator:i.guild.voiceAdapterCreator}); const s=await play.stream(l); player.play(createAudioResource(s.stream,{inputType:s.type})); conn.subscribe(player); return i.reply('Çalıyor');}
-    if(cmd==='liderlik'){ const top=Object.entries(VERI.aktiflik).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([id,c],j)=>`${j+1}. <@${id}>: ${c}`).join('
-'); return i.reply({embeds:[createEmbed('Liderlik',top||'Yok')]})}
-    if(cmd==='yardım'){ return i.reply({embeds:[createEmbed('Komutlar', komutlar.map(c=>`/${c.name}`).join(', '))], ephemeral:true});}
 });
 
 client.on('messageCreate', m=>{ if(!m.author.bot){ VERI.aktiflik[m.author.id]=(VERI.aktiflik[m.author.id]||0)+1; veriKaydet(); }});
