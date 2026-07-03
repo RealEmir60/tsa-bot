@@ -1,26 +1,19 @@
 {
   "name": "tsa-discord-bot",
-  "version": "2.0.0",
-  "description": "TSA - Turkish Special Army Discord Botu | 42 Komut + 5 Otomasyon Sistemi",
+  "version": "1.0.0",
+  "description": "TSA Discord Bot (Cookie'siz)",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node index.js"
   },
-  "keywords": ["discord", "bot", "tsa", "roblox", "moderation"],
-  "author": "TSA Development Team",
-  "license": "MIT",
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5",
-    "node-fetch": "^3.3.2",
-    "ms": "^2.1.3"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.3"
+    "discord.js": "^14.16.3",
+    "@discordjs/voice": "^0.17.0",
+    "play-dl": "^1.9.7",
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5"
   },
   "engines": {
-    "node": ">=16.9.0"
+    "node": "20.x"
   }
 }
-
