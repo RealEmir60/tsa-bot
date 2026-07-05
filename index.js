@@ -1,9 +1,13 @@
 const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, REST, Routes, ActivityType, PermissionsBitField, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require("discord.js");
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus, NoSubscriberBehavior } = require("@discordjs/voice");
-const play = require("play-dl");
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus, NoSubscriberBehavior, StreamType } = require("@discordjs/voice");
+const youtubedl = require("yt-dlp-exec");
+const prism = require("prism-media");
 const fs = require("fs");
 const express = require("express");
 require("dotenv").config();
+
+// prism-media, ffmpeg'i sistemde aramak yerine ffmpeg-static'in verdiği yolu kullansın.
+process.env.FFMPEG_PATH = require("ffmpeg-static");
 
 // ==================== UI / MARKA RENKLERİ ====================
 // Botun tüm embed'lerinde tutarlı bir görsel kimlik için ortak renk paleti.
@@ -18,6 +22,53 @@ const RENK = {
 };
 
 const ROBLOX_GRUP_LINK = "https://www.roblox.com/tr/communities/972348115/TSA-Turkish-Armed-Forces-Yeniden#!/about";
+
+// ==================== OTO CEVAPLAR ====================
+// Buraya istediğin kadar tetikleyici/cevap ekleyebilirsin.
+// Tek kelimelik tetikleyiciler (örn. "sa") mesajın içinde ayrı bir KELİME olarak geçmeli;
+// birden fazla kelimeli tetikleyiciler (örn. "iyi geceler") mesajın herhangi bir yerinde geçebilir.
+const OTO_CEVAPLAR = [
+  { tetikleyiciler: ["sa", "selamun aleykum", "selamünaleyküm", "selamun aleyküm", "selamünaleykum"], cevap: "Aleyküm Selam. 🎖️" },
+  { tetikleyiciler: ["merhaba"], cevap: "Merhaba! 👋" },
+  { tetikleyiciler: ["selam"], cevap: "Selam! 👋" },
+  { tetikleyiciler: ["günaydın", "gunaydin"], cevap: "Günaydın! ☀️" },
+  { tetikleyiciler: ["iyi geceler"], cevap: "Sana da iyi geceler! 🌙" },
+  { tetikleyiciler: ["naber", "nasılsın", "nasilsin"], cevap: "İyidir, sorduğun için sağ ol! Sen nasılsın? 🙂" },
+  { tetikleyiciler: ["teşekkürler", "tesekkurler", "sağol", "sagol", "sağ ol"], cevap: "Rica ederim! 🙌" }
+];
+
+// Mesaj içeriğine bakıp uygun bir oto cevap varsa döner, yoksa null döner.
+function otoCevapBul(mesajIcerigi) {
+  const metin = mesajIcerigi.toLocaleLowerCase("tr-TR").trim();
+  if (!metin) return null;
+  const kelimeler = metin.split(/[^a-zçöşüğı0-9]+/).filter(Boolean);
+
+  for (const grup of OTO_CEVAPLAR) {
+    for (const tetik of grup.tetikleyiciler) {
+      if (tetik.includes(" ")) {
+        if (metin.includes(tetik)) return grup.cevap;
+      } else if (kelimeler.includes(tetik)) {
+        return grup.cevap;
+      }
+    }
+  }
+  return null;
+}
+
+// ==================== SPAM KORUMASI ====================
+const SPAM_MESAJ_LIMITI = 5;      // Bu süre içinde en fazla kaç mesaj atılabilir
+const SPAM_SURE_MS = 6000;        // 6 saniye
+const SPAM_TIMEOUT_MS = 60_000;   // Spam yapan kişi 60 saniye susturulur
+const spamTakip = new Map();      // kullaniciId -> [zaman damgaları]
+
+// true dönerse kullanıcı spam limitini aşmış demektir.
+function spamKontrolEt(kullaniciId) {
+  const simdi = Date.now();
+  const kayitlar = (spamTakip.get(kullaniciId) || []).filter(t => simdi - t < SPAM_SURE_MS);
+  kayitlar.push(simdi);
+  spamTakip.set(kullaniciId, kayitlar);
+  return kayitlar.length > SPAM_MESAJ_LIMITI;
+}
 
 // Tüm embed'lerde tekrar eden footer + timestamp ayarını tek yerden yönetmek için yardımcı fonksiyon.
 function tsaEmbed(color, guild = null) {
@@ -57,7 +108,7 @@ const EGITIM_ROL_ID = "1518397406578741348"; // Bu ID'ler sabit kalacak mı? Kul
 const EGITIM_KANAL_ID = "1518357904779116554"; // Bu ID'ler sabit kalacak mı? Kullanıcıdan teyit almak gerekebilir.
 
 // ==================== DATA ====================
-let data = { uyari: {}, izin: {} };
+let data = { uyari: {}, izin: {}, aktiflik: {} };
 
 if (fs.existsSync(config.DATA_FILE)) {
   try {
@@ -66,10 +117,76 @@ if (fs.existsSync(config.DATA_FILE)) {
     console.error("Error reading data.json:", e);
   }
 }
+// Eski data.json dosyalarında "aktiflik" alanı olmayabilir, yoksa oluşturuyoruz.
+if (!data.aktiflik) data.aktiflik = {};
 
 const saveData = () => fs.writeFileSync(config.DATA_FILE, JSON.stringify(data, null, 2));
 
 // ==================== MUSIC ====================
+// play-dl yerine yt-dlp kullanıyoruz: yt-dlp çok daha aktif güncellenen ve
+// YouTube'un bot korumasına play-dl'den çok daha az takılan bir araç.
+// Cookie GEREKMİYOR — çoğu video için doğrudan çalışır.
+
+// Bir promise'i verilen süre içinde bitmezse reddeden (reject eden) yardımcı fonksiyon.
+function withTimeout(promise, ms, timeoutMessage) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+// YouTube'da arama yapar, ilk sonucun başlığını ve linkini döner.
+async function ytdlpArama(query) {
+  const sonuc = await youtubedl(`ytsearch1:${query}`, {
+    dumpSingleJson: true,
+    noWarnings: true,
+    noCheckCertificates: true,
+    preferFreeFormats: true,
+    skipDownload: true
+  });
+
+  const video = sonuc?.entries?.[0] || (sonuc?.id ? sonuc : null);
+  if (!video) return null;
+
+  return {
+    title: video.title || "Bilinmeyen Şarkı",
+    url: video.webpage_url || `https://www.youtube.com/watch?v=${video.id}`
+  };
+}
+
+// Verilen YouTube linkinden Discord'un çalabileceği ham ses (PCM) akışı oluşturur.
+function ytdlpAkisOlustur(url) {
+  const ytProcess = youtubedl.exec(url, {
+    output: "-",
+    format: "bestaudio/best",
+    noCheckCertificates: true,
+    noWarnings: true,
+    preferFreeFormats: true,
+    quiet: true
+  }, { stdio: ["ignore", "pipe", "ignore"] });
+
+  const ffmpegDonusturucu = new prism.FFmpeg({
+    args: [
+      "-analyzeduration", "0",
+      "-loglevel", "0",
+      "-f", "s16le",
+      "-ar", "48000",
+      "-ac", "2"
+    ]
+  });
+
+  const akis = ytProcess.stdout.pipe(ffmpegDonusturucu);
+
+  const temizle = () => {
+    if (ytProcess && !ytProcess.killed) ytProcess.kill();
+  };
+  akis.on("close", temizle);
+  akis.on("error", temizle);
+
+  return akis;
+}
+
 const player = createAudioPlayer({
   behaviors: { noSubscriber: NoSubscriberBehavior.Pause }
 });
@@ -124,6 +241,50 @@ async function getRobloxGroups(userId) {
   if (!res.ok) throw new Error(`Roblox grupları alınamadı: ${res.status}`);
   const json = await res.json();
   return json.data || []; // [{ group: { id, name }, role: { name, rank } }, ...]
+}
+
+// ---- Grup istatistikleri (üye sayısı, açıklama, sahip) ----
+async function getRobloxGroupInfo(groupId) {
+  const res = await fetch(`https://groups.roblox.com/v1/groups/${groupId}`);
+  if (!res.ok) throw new Error(`Roblox grup bilgisi alınamadı: ${res.status}`);
+  return res.json(); // { id, name, description, owner, memberCount, shout, ... }
+}
+
+async function getRobloxGroupIcon(groupId) {
+  const res = await fetch(`https://thumbnails.roblox.com/v1/groups/icons?groupIds=${groupId}&size=420x420&format=Png&isCircular=false`);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data?.[0]?.imageUrl || null;
+}
+
+// ---- Oyun istatistikleri (anlık oyuncu sayısı, ziyaret, favori) ----
+async function getRobloxUniverseIdFromPlace(placeId) {
+  const res = await fetch(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`);
+  if (!res.ok) throw new Error(`Roblox universe ID alınamadı: ${res.status}`);
+  const json = await res.json();
+  return json.universeId;
+}
+
+async function getRobloxGameInfo(universeId) {
+  const res = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+  if (!res.ok) throw new Error(`Roblox oyun bilgisi alınamadı: ${res.status}`);
+  const json = await res.json();
+  return json.data?.[0] || null; // { name, playing, visits, favoritedCount, maxPlayers, ... }
+}
+
+async function getRobloxGameIcon(universeId) {
+  const res = await fetch(`https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&size=512x512&format=Png&isCircular=false`);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data?.[0]?.imageUrl || null;
+}
+
+// ---- Grup rütbeleri (canlı, Roblox'tan çekilir) ----
+async function getRobloxGroupRoles(groupId) {
+  const res = await fetch(`https://groups.roblox.com/v1/groups/${groupId}/roles`);
+  if (!res.ok) throw new Error(`Roblox grup rütbeleri alınamadı: ${res.status}`);
+  const json = await res.json();
+  return json.roles || []; // [{ id, name, rank, memberCount }, ...] rank: 0-255
 }
 
 // ==================== CLIENT ====================
@@ -250,6 +411,8 @@ const commands = [
 
   new SlashCommandBuilder().setName("oyun").setDescription("TSA resmi oyun linkini gösterir."),
   new SlashCommandBuilder().setName("grup").setDescription("TSA resmi grup linkini gösterir."),
+  new SlashCommandBuilder().setName("grup-bilgi").setDescription("TSA Roblox grubunun üye sayısını ve bilgilerini gösterir."),
+  new SlashCommandBuilder().setName("oyun-bilgi").setDescription("TSA Roblox oyununun anlık oyuncu sayısını ve istatistiklerini gösterir."),
 
   new SlashCommandBuilder()
     .setName("dm-mesaj")
@@ -285,7 +448,7 @@ const commands = [
   new SlashCommandBuilder().setName("muzik-simdiki").setDescription("Şu an çalan şarkıyı gösterir."),
 
   // ==================== DİĞER KOMUTLAR ====================
-  new SlashCommandBuilder().setName("rutbeler").setDescription("TSA rütbe tablosunu gösterir."),
+  new SlashCommandBuilder().setName("rutbeler").setDescription("Roblox grubundaki güncel rütbeleri canlı olarak gösterir."),
   new SlashCommandBuilder().setName("liderlik").setDescription("En aktif üyeleri gösterir."),
   new SlashCommandBuilder().setName("sunucu-bilgi").setDescription("Sunucu hakkında detaylı bilgi gösterir."),
   new SlashCommandBuilder()
@@ -358,6 +521,42 @@ client.on("guildMemberAdd", async member => {
       `<@${member.id}> katıldı fakat DM'leri kapalı olduğu için hoş geldin mesajı gönderilemedi.`,
       RENK.uyari
     ).catch(() => {});
+  }
+});
+
+// ==================== MESAJ SİSTEMİ (aktiflik + spam koruması + oto cevaplar) ====================
+client.on("messageCreate", async message => {
+  // Botları ve DM'leri yok sayıyoruz, sadece sunucudaki gerçek kullanıcı mesajlarıyla ilgileniyoruz.
+  if (message.author.bot || !message.guild) return;
+
+  // ---- 1) Aktiflik takibi (/liderlik için) ----
+  data.aktiflik[message.author.id] = (data.aktiflik[message.author.id] || 0) + 1;
+  saveData();
+
+  // ---- 2) Spam koruması ----
+  const uyeYetkiliMi = message.member?.roles.cache.has(config.YETKILI_ROL) || message.member?.permissions.has(PermissionsBitField.Flags.Administrator);
+
+  if (!uyeYetkiliMi && spamKontrolEt(message.author.id)) {
+    spamTakip.delete(message.author.id); // Sayaç sıfırlansın, art arda tekrar tekrar cezalandırmasın.
+    try {
+      if (message.member?.moderatable) {
+        await message.member.timeout(SPAM_TIMEOUT_MS, "Spam mesaj gönderme");
+        const uyariMesaji = await message.channel.send({
+          embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`🚫 <@${message.author.id}> spam yaptığı için **60 saniye** susturuldu.`)]
+        });
+        setTimeout(() => uyariMesaji.delete().catch(() => {}), 8000);
+        await sendLogMessage(message.guild, "Spam Tespit Edildi", `<@${message.author.id}> kısa sürede çok fazla mesaj attığı için otomatik olarak susturuldu.`, RENK.uyari);
+      }
+    } catch (e) {
+      console.error("Spam cezası uygulanırken hata:", e);
+    }
+    return; // Spam yapan kişiye ayrıca oto cevap vermiyoruz.
+  }
+
+  // ---- 3) Oto cevaplar ----
+  const cevap = otoCevapBul(message.content);
+  if (cevap) {
+    await message.reply(cevap).catch(() => {});
   }
 });
 
@@ -1009,6 +1208,80 @@ client.on("interactionCreate", async interaction => {
       return interaction.reply({ content: "@everyone", embeds: [embed], components: [buton] });
     }
 
+    if (cmd === "grup-bilgi") {
+      await interaction.deferReply();
+      const groupId = config.GROUP_ID;
+      if (!groupId) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `GROUP_ID` ayarlanmamış.")] });
+      }
+      try {
+        const [grup, icon] = await Promise.all([
+          getRobloxGroupInfo(groupId),
+          getRobloxGroupIcon(groupId)
+        ]);
+
+        const embed = new EmbedBuilder()
+          .setColor(RENK.ana)
+          .setTitle(`👥 ${grup.name}`)
+          .setURL(`https://www.roblox.com/communities/${groupId}`)
+          .setThumbnail(icon)
+          .addFields(
+            { name: "🆔 Grup ID", value: groupId.toString(), inline: true },
+            { name: "👤 Sahibi", value: grup.owner?.username ? `@${grup.owner.username}` : "Bilinmiyor", inline: true },
+            { name: "👥 Üye Sayısı", value: grup.memberCount?.toLocaleString("tr-TR") || "Bilinmiyor", inline: true }
+          )
+          .setDescription(grup.description ? grup.description.slice(0, 500) : "Açıklama yok.")
+          .setFooter({ text: "TSA - Turkish Special Army" })
+          .setTimestamp();
+
+        if (grup.shout?.body) {
+          embed.addFields({ name: "📢 Son Duyuru (Shout)", value: grup.shout.body.slice(0, 300) });
+        }
+
+        return interaction.editReply({ embeds: [embed] });
+      } catch (e) {
+        console.error("Grup bilgisi hatası:", e);
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Grup bilgisi alınırken bir hata oluştu.")] });
+      }
+    }
+
+    if (cmd === "oyun-bilgi") {
+      await interaction.deferReply();
+      const placeId = config.OYUN_PLACE_ID;
+      if (!placeId) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `OYUN_PLACE_ID` ayarlanmamış.")] });
+      }
+      try {
+        const universeId = await getRobloxUniverseIdFromPlace(placeId);
+        const [oyun, icon] = await Promise.all([
+          getRobloxGameInfo(universeId),
+          getRobloxGameIcon(universeId)
+        ]);
+
+        if (!oyun) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Oyun bilgisi bulunamadı.")] });
+        }
+
+        const embed = new EmbedBuilder()
+          .setColor(RENK.basari)
+          .setTitle(`🎮 ${oyun.name}`)
+          .setURL(`https://www.roblox.com/games/${placeId}`)
+          .setThumbnail(icon)
+          .addFields(
+            { name: "🟢 Anlık Oyuncu", value: oyun.playing?.toLocaleString("tr-TR") || "0", inline: true },
+            { name: "👁️ Toplam Ziyaret", value: oyun.visits?.toLocaleString("tr-TR") || "0", inline: true },
+            { name: "⭐ Favori Sayısı", value: oyun.favoritedCount?.toLocaleString("tr-TR") || "0", inline: true }
+          )
+          .setFooter({ text: "TSA - Turkish Special Army" })
+          .setTimestamp();
+
+        return interaction.editReply({ embeds: [embed] });
+      } catch (e) {
+        console.error("Oyun bilgisi hatası:", e);
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Oyun bilgisi alınırken bir hata oluştu.")] });
+      }
+    }
+
     if (cmd === "dm-mesaj") {
       await interaction.deferReply({ ephemeral: true });
       const target = interaction.options.getUser("kullanici");
@@ -1070,16 +1343,24 @@ client.on("interactionCreate", async interaction => {
       const query = interaction.options.getString("sarki");
       let streamInfo;
       try {
-        const searchResult = await play.search(query, { limit: 1 });
-        if (searchResult.length === 0) {
+        const bulunan = await withTimeout(
+          ytdlpArama(query),
+          15000,
+          "Arama zaman aşımına uğradı (YouTube yanıt vermedi)."
+        );
+        if (!bulunan) {
           return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Şarkı bulunamadı.")] });
         }
-        streamInfo = await play.stream(searchResult[0].url);
-        streamInfo.title = searchResult[0].title;
-        streamInfo.url = searchResult[0].url;
+
+        const akis = ytdlpAkisOlustur(bulunan.url);
+        streamInfo = { stream: akis, type: StreamType.Raw, title: bulunan.title, url: bulunan.url };
       } catch (e) {
         console.error("Müzik akışı alınırken hata:", e);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Müzik çalınırken bir hata oluştu.")] });
+        const zamanAsimiMi = e.message?.includes("zaman aşımına uğradı");
+        const aciklama = zamanAsimiMi
+          ? `⏱️ ${e.message}`
+          : "Müzik çalınırken bir hata oluştu. Farklı bir şarkı adı veya link ile tekrar dene.";
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(aciklama)] });
       }
 
       queue.push(streamInfo);
@@ -1146,9 +1427,10 @@ client.on("interactionCreate", async interaction => {
 
     // ==================== DİĞER KOMUTLAR ====================
     if (cmd === "rutbeler") {
-      const rutbeTablosu = `
-**TSA Rütbe Tablosu**
+      await interaction.deferReply();
 
+      // Sabit tablo: GROUP_ID ayarlanmamışsa veya Roblox'a erişilemezse yedek olarak kullanılır.
+      const yedekRutbeTablosu = `
 255. TSA
 254. Grup Sahibi
 253. 2. Grup Sahibi
@@ -1190,22 +1472,73 @@ client.on("interactionCreate", async interaction => {
 1. [OR-1] Acemi Er
 `;
 
+      // Embed field 1024 karakter sınırına takılmamak için listeyi parçalara bölen yardımcı fonksiyon.
+      const chunkText = (lines) => {
+        const chunks = [];
+        let current = "";
+        for (const line of lines) {
+          if ((current + line + "\n").length > 1000) {
+            chunks.push(current);
+            current = "";
+          }
+          current += line + "\n";
+        }
+        if (current) chunks.push(current);
+        return chunks;
+      };
+
       const embed = new EmbedBuilder()
         .setColor(RENK.ozel)
         .setTitle("👑 TSA Rütbe Tablosu")
-        .setDescription(rutbeTablosu)
-        .setFooter({ text: "TSA Discord Bot" });
+        .setFooter({ text: "TSA Discord Bot" })
+        .setTimestamp();
 
-      return interaction.reply({ embeds: [embed] });
+      const groupId = config.GROUP_ID;
+      if (!groupId) {
+        embed.setDescription("⚠️ `GROUP_ID` ayarlanmadığı için canlı veri çekilemedi, yedek tablo gösteriliyor.\n" + yedekRutbeTablosu);
+        return interaction.editReply({ embeds: [embed] });
+      }
+
+      try {
+        const roller = await getRobloxGroupRoles(groupId);
+        // Rütbe (rank) numarasına göre büyükten küçüğe sıralıyoruz, en yüksek rütbe en üstte.
+        const siraliRoller = roller.slice().sort((a, b) => b.rank - a.rank);
+        const satirlar = siraliRoller.map(r => `**${r.rank}.** ${r.name} — 👥 ${r.memberCount ?? 0}`);
+
+        embed.setDescription("Roblox grubundan canlı olarak çekilen güncel rütbe listesi:");
+        chunkText(satirlar).forEach((chunk, i) => {
+          embed.addFields({ name: i === 0 ? "📋 Rütbeler" : "📋 Rütbeler (devam)", value: chunk });
+        });
+
+        return interaction.editReply({ embeds: [embed] });
+      } catch (e) {
+        console.error("Rütbe listesi hatası:", e);
+        embed.setDescription("⚠️ Roblox'tan canlı veri çekilirken hata oluştu, yedek tablo gösteriliyor.\n" + yedekRutbeTablosu);
+        return interaction.editReply({ embeds: [embed] });
+      }
     }
 
     if (cmd === "liderlik") {
-      // Bu komut için aktivite takibi gereklidir. Şimdilik placeholder.
+      const siralama = Object.entries(data.aktiflik || {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+      if (siralama.length === 0) {
+        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.altin).setTitle("👑 En Aktif Üyeler").setDescription("Henüz hiç aktiflik verisi toplanmadı.")] });
+      }
+
+      const madalyalar = ["🥇", "🥈", "🥉"];
+      const satirlar = siralama.map(([userId, sayi], i) => {
+        const sira = madalyalar[i] || `**${i + 1}.**`;
+        return `${sira} <@${userId}> — **${sayi}** mesaj`;
+      });
+
       const embed = new EmbedBuilder()
         .setColor(RENK.altin)
         .setTitle("👑 En Aktif Üyeler")
-        .setDescription("Bu komut yakında Discord aktivite takibi ile güncellenecek.")
-        .setFooter({ text: "TSA Discord Bot" });
+        .setDescription(satirlar.join("\n"))
+        .setFooter({ text: "TSA Discord Bot — Sunucudaki toplam mesaj sayısına göre sıralanmıştır" })
+        .setTimestamp();
       return interaction.reply({ embeds: [embed] });
     }
 
