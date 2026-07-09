@@ -142,6 +142,20 @@ let robloxBotUserId = null;
 let robloxBotAdi = null;
 let robloxCookieSonGecerlilik = null;
 
+// .ROBLOSECURITY cookie'sinin tam formatı:
+// _|WARNING:-DO-NOT-SHARE-THIS.--Sharing-this-will-allow-someone-to-log-into-your-account-and-steal-your-ROBUX-and-items.|_<ASIL_DEGER>
+const ROBLOX_WARNING_PREFIX = "_|WARNING:-DO-NOT-SHARE-THIS.--Sharing-this-will-allow-someone-to-log-into-your-account-and-steal-your-ROBUX-and-items.|_";
+
+function cookieTemizle(cookie) {
+  let c = cookie.trim().replace(/^["']|["']$/g, ""); // Baştaki/sondaki tırnak işaretlerini kaldır
+  if (!c.startsWith("_|WARNING:")) {
+    // Kullanıcı sadece asıl değeri yapıştırmış, prefix'i otomatik ekle
+    console.log("ℹ️ Cookie'ye WARNING prefix otomatik ekleniyor...");
+    c = ROBLOX_WARNING_PREFIX + c;
+  }
+  return c;
+}
+
 async function robloxGirisYap(cookie) {
   if (!cookie) {
     console.log("ℹ️ ROBLOX_COOKIE ayarlanmamış. Rütbe komutları çalışmayacak.");
@@ -149,7 +163,7 @@ async function robloxGirisYap(cookie) {
     return null;
   }
   try {
-    const cleanCookie = cookie.trim().replace(/^["']|["']$/g, "");
+    const cleanCookie = cookieTemizle(cookie);
     const currentUser = await noblox.setCookie(cleanCookie);
     robloxGirisYapildi = true;
     robloxBotUserId = currentUser.UserID || currentUser.id;
@@ -159,8 +173,10 @@ async function robloxGirisYap(cookie) {
     return currentUser;
   } catch (e) {
     console.error("❌ ROBLOX_COOKIE ile giriş yapılamadı:", e.message);
-    if (e.message?.toLowerCase().includes("token") || e.message?.includes("401") || e.message?.includes("403")) {
-      console.error("   → Cookie geçersiz veya süresi dolmuş. Yeni .ROBLOSECURITY cookie'si alıp /cookie-yenile ile girmeyi dene.");
+    if (e.message?.includes("not logged in") || e.message?.includes("warning text") || e.message?.includes("cookie")) {
+      console.error("   → Cookie değeri geçersiz. Tarayıcından Roblox'a giriş yap, F12 → Application → Cookies → .ROBLOSECURITY değerinin TAMAMINI kopyala.");
+    } else if (e.message?.toLowerCase().includes("token") || e.message?.includes("401") || e.message?.includes("403")) {
+      console.error("   → Cookie süresi dolmuş. Yeni .ROBLOSECURITY cookie'si alıp Render ortam değişkenine yapıştır veya /cookie-yenile kullan.");
     } else if (e.message?.includes("ECONNREFUSED") || e.message?.includes("ETIMEDOUT")) {
       console.error("   → Roblox'a bağlanılamadı. İnternet bağlantını veya firewall'ı kontrol et.");
     }
