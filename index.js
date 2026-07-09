@@ -478,6 +478,14 @@ const commands = [
     .addStringOption(o => o.setName("mesaj_icerigi").setDescription("Gönderilecek duyuru mesajı").setRequired(true)),
 
   new SlashCommandBuilder()
+    .setName("cookie-yenile")
+    .setDescription("Botun Roblox ana rütbe yetkisini (cookie) yeniler."),
+
+  new SlashCommandBuilder()
+    .setName("cookie-durum")
+    .setDescription("Botun Roblox ana rütbe yetkisinin (cookie) durumunu gösterir."),
+
+  new SlashCommandBuilder()
     .setName("dm-mesaj")
     .setDescription("Belirtilen kullanıcıya özel mesaj gönderir.")
     .addUserOption(o => o.setName("kullanici").setDescription("Mesaj gönderilecek kullanıcı").setRequired(true))
@@ -672,6 +680,34 @@ client.on("interactionCreate", async interaction => {
     return;
   }
 
+  // ---- Modal Gönderimi (Roblox ana cookie yenileme) ----
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId === "cookie_yenile_modal") {
+      const yetkiliMi = interaction.member.roles.cache.has(config.YETKILI_ROL) || interaction.member.permissions.has(PermissionsBitField.Flags.Administrator);
+      if (!yetkiliMi) {
+        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bu işlemi yapmak için yeterli yetkiniz yok!")], ephemeral: true });
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+      const yeniCookie = interaction.fields.getTextInputValue("yeni_cookie").trim();
+
+      try {
+        const kullanici = await robloxGirisYap(yeniCookie);
+        console.log(`✅ Botun ana Roblox cookie'si güncellendi. Yeni hesap: ${kullanici.name}`);
+        return interaction.editReply({
+          embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(
+            `✅ Botun ana rütbe yetkisi başarıyla yenilendi: **${kullanici.name}** olarak giriş yapıldı.\n\n` +
+            `⚠️ Bu değişiklik bot yeniden başlayana kadar geçerlidir. Kalıcı olması için panelden de güncellemeyi unutmayın.`
+          )]
+        });
+      } catch (e) {
+        console.error("Cookie yenileme hatası:", e);
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Cookie geçersiz veya süresi dolmuş. Lütfen doğru cookie'yi yapıştırdığınızdan emin olun.")] });
+      }
+    }
+    return;
+  }
+
   // ---- Butonlar (Roblox profil sayfalama) ----
   if (interaction.isButton()) {
     if (interaction.customId === "robloxprofil_prev" || interaction.customId === "robloxprofil_next") {
@@ -695,7 +731,7 @@ client.on("interactionCreate", async interaction => {
   const isEgitimHost = interaction.member.roles.cache.has(EGITIM_ROL_ID);
 
   // Yetkili komutları kontrolü
-  const yetkiliKomutlar = ["kick", "ban", "unban", "temizle", "yavas-mod", "kilitle", "kilit-ac", "rol-ver", "rol-al", "uyari-ver", "uyari-sil", "uyari-liste", "sicil-temizle", "dm-mesaj", "haber-yap", "egitim-duyuru", "duyuru", "aktiflik-denetleme", "rutbe-degistir", "terfi", "tenzil", "yenile", "dm-duyuru"];
+  const yetkiliKomutlar = ["kick", "ban", "unban", "temizle", "yavas-mod", "kilitle", "kilit-ac", "rol-ver", "rol-al", "uyari-ver", "uyari-sil", "uyari-liste", "sicil-temizle", "dm-mesaj", "haber-yap", "egitim-duyuru", "duyuru", "aktiflik-denetleme", "rutbe-degistir", "terfi", "tenzil", "yenile", "dm-duyuru", "cookie-yenile", "cookie-durum"];
   if (yetkiliKomutlar.includes(cmd) && !isYetkili) {
     return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bu komutu kullanmak için yeterli yetkiniz yok!")] });
   }
@@ -1485,6 +1521,42 @@ client.on("interactionCreate", async interaction => {
       ]);
 
       return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`✅ **${hedefRol.name}** rolündeki **${sentCount}** kullanıcıya DM duyurusu başarıyla gönderildi. **${failedCount}** kullanıcıya gönderilemedi (DM'leri kapalı olabilir).`)] });
+    }
+
+    if (cmd === "cookie-yenile") {
+      const modal = new ModalBuilder()
+        .setCustomId("cookie_yenile_modal")
+        .setTitle("Bot Ana Rütbe Yetkisi Yenile");
+
+      const cookieAlani = new TextInputBuilder()
+        .setCustomId("yeni_cookie")
+        .setLabel("Yeni ROBLOX_COOKIE değeri")
+        .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder("_|WARNING:-DO-NOT-SHARE-THIS... ile başlayan cookie'yi buraya yapıştır")
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(cookieAlani));
+      return interaction.showModal(modal);
+    }
+
+    if (cmd === "cookie-durum") {
+      await interaction.deferReply({ ephemeral: true });
+      if (robloxGirisYapildi && robloxBotAdi) {
+        return interaction.editReply({
+          embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(
+            `✅ Bot şu anda Roblox'a giriş yapmış durumda.\n` +
+            `👤 **Giriş Yapılan Hesap:** ${robloxBotAdi}\n` +
+            `🆔 **Hesap ID:** ${robloxBotUserId}`
+          )]
+        });
+      } else {
+        return interaction.editReply({
+          embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+            `❌ Bot şu anda Roblox'a giriş yapamamış durumda.\n` +
+            `Lütfen \`/cookie-yenile\` komutu ile yeni bir cookie girin.`
+          )]
+        });
+      }
     }
 
     if (cmd === "yenile") {
