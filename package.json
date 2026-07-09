@@ -1,11 +1,11 @@
 {
   "name": "tsa-discord-bot",
   "version": "1.0.0",
-  "description": "TSA Discord Bot",
+  "description": "TSA Discord Bot – Türkiye Özel Askeri Birliği",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "build": "npm install"  // VEYA "npm ci"
+    "build": "npm ci"
   },
   "keywords": [
     "discord",
@@ -17,16 +17,15 @@
   "license": "ISC",
   "dependencies": {
     "@discordjs/voice": "^0.16.0",
-    "discord.js": "^14.x.x",
-    "dotenv": "^16.0.3",
-    "express": "^4.18.2",
-    "ffmpeg-static": "^5.0.0",
-    "fs": "^0.0.1-security",
-    "prism-media": "^2.6.0",   // <<< BURAYI KONTROL EDİN, >2.5.0 OLMALI
-    "yt-dlp-exec": "^0.4.0",
-    "noblox.js": "^4.11.3"
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.3.1",
+    "express": "^4.21.0",
+    "ffmpeg-static": "^5.2.0",
+    "prism-media": "^2.6.0",
+    "yt-dlp-exec": "^0.5.0",
+    "noblox.js": "^4.15.2"
   },
   "engines": {
-    "node": ">=20.11.1"  // <<< NODE.JS SÜRÜMÜNÜ BURAYA AYARLAYIN (Render ayarlarında da yapabilirsiniz)
+    "node": ">=20.11.1"
   }
 }
