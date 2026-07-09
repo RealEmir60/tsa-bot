@@ -23,7 +23,7 @@
     "ffmpeg-static": "^5.2.0",
     "prism-media": "^2.6.0",
     "yt-dlp-exec": "^0.5.0",
-    "noblox.js": "^4.15.2"
+    "noblox.js": "^4.14.0"
   },
   "engines": {
     "node": ">=20.11.1"
