@@ -4,7 +4,8 @@
   "description": "TSA Discord Bot",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "build": "npm install"  // VEYA "npm ci"
   },
   "keywords": [
     "discord",
@@ -21,11 +22,11 @@
     "express": "^4.18.2",
     "ffmpeg-static": "^5.0.0",
     "fs": "^0.0.1-security",
-    "prism-media": "^2.5.0",
+    "prism-media": "^2.6.0",   // <<< BURAYI KONTROL EDİN, >2.5.0 OLMALI
     "yt-dlp-exec": "^0.4.0",
     "noblox.js": "^4.11.3"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.11.1"  // <<< NODE.JS SÜRÜMÜNÜ BURAYA AYARLAYIN (Render ayarlarında da yapabilirsiniz)
   }
 }
