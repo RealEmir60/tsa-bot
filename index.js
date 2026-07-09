@@ -132,7 +132,7 @@ const config = {
   ASKERI_PERSONEL_ROL: process.env.ASKERI_PERSONEL_ROL_ID,
   GROUP_ID: process.env.GROUP_ID,
   OYUN_PLACE_ID: process.env.OYUN_PLACE_ID,
-  ROBLOX_COOKIE: process.env.ROBLOX_COOKIE, // Rütbe değiştirme için gerekli
+  ROBLOX_COOKIE: process.env.ROBLOX_COOKIE,
   DATA_FILE: "./data.json"
 };
 
@@ -140,7 +140,7 @@ const config = {
 let robloxGirisYapildi = false;
 let robloxBotUserId = null;
 let robloxBotAdi = null;
-let robloxCookieSonGecerlilik = null; // Son başarılı girişin zaman damgası
+let robloxCookieSonGecerlilik = null;
 
 async function robloxGirisYap(cookie) {
   if (!cookie) {
@@ -149,19 +149,25 @@ async function robloxGirisYap(cookie) {
     return null;
   }
   try {
-    const currentUser = await noblox.setCookie(cookie);
+    const cleanCookie = cookie.trim().replace(/^["']|["']$/g, "");
+    const currentUser = await noblox.setCookie(cleanCookie);
     robloxGirisYapildi = true;
-    robloxBotUserId = currentUser.id;
-    robloxBotAdi = currentUser.name;
-    robloxCookieSonGecerlilik = Date.now(); // Başarılı girişi kaydet
-    console.log(`✅ Roblox'a "${currentUser.name}" (${currentUser.id}) hesabıyla giriş yapıldı. Rütbe komutları aktif.`);
+    robloxBotUserId = currentUser.UserID || currentUser.id;
+    robloxBotAdi = currentUser.UserName || currentUser.name;
+    robloxCookieSonGecerlilik = Date.now();
+    console.log(`✅ Roblox'a "${robloxBotAdi}" (${robloxBotUserId}) hesabıyla giriş yapıldı. Rütbe komutları aktif.`);
     return currentUser;
   } catch (e) {
     console.error("❌ ROBLOX_COOKIE ile giriş yapılamadı:", e.message);
+    if (e.message?.toLowerCase().includes("token") || e.message?.includes("401") || e.message?.includes("403")) {
+      console.error("   → Cookie geçersiz veya süresi dolmuş. Yeni .ROBLOSECURITY cookie'si alıp /cookie-yenile ile girmeyi dene.");
+    } else if (e.message?.includes("ECONNREFUSED") || e.message?.includes("ETIMEDOUT")) {
+      console.error("   → Roblox'a bağlanılamadı. İnternet bağlantını veya firewall'ı kontrol et.");
+    }
     robloxGirisYapildi = false;
     robloxBotUserId = null;
     robloxBotAdi = null;
-    robloxCookieSonGecerlilik = null; // Giriş başarısız oldu
+    robloxCookieSonGecerlilik = null;
     return null;
   }
 }
@@ -217,9 +223,8 @@ async function ytdlpArama(query) {
     skipDownload: true,
     maxRetries: 3
   };
-  const context = { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36' };
 
-  const sonuc = await youtubedl(searchUrl, options, { cwd: process.cwd(), env: process.env, ...context });
+  const sonuc = await youtubedl(searchUrl, options, { cwd: process.cwd(), env: process.env });
 
   const video = sonuc?.entries?.[0] || (sonuc?.id ? sonuc : null);
   if (!video) return null;
@@ -278,27 +283,24 @@ player.on(AudioPlayerStatus.Idle, () => {
     player.play(resource);
   } else {
     currentSong = null;
-    const connection = getVoiceConnection(client.guilds.cache.find(g => g.me.voice.channel)?.id);
-    if (connection) {
-        connection.destroy();
-    }
+    client.guilds.cache.forEach(g => {
+      const conn = getVoiceConnection(g.id);
+      if (conn) conn.destroy();
+    });
   }
 });
 
 player.on("error", error => {
   console.error(`Müzik çalarken hata: ${error.message} (Kaynak: ${error.resource?.metadata?.title})`);
   if (currentSong) {
-      currentSong.stream.destroy();
+    currentSong.stream.destroy();
+    currentSong = null;
   }
-  if (queue.length > 0) {
-      player.stop();
-  } else {
-      const connection = getVoiceConnection(client.guilds.cache.find(g => g.me.voice.channel)?.id);
-      if (connection) {
-          connection.destroy();
-      }
-      currentSong = null;
-  }
+  client.guilds.cache.forEach(g => {
+    const conn = getVoiceConnection(g.id);
+    if (conn) conn.destroy();
+  });
+  queue = [];
 });
 
 // ==================== ROBLOX API HELPERS ====================
@@ -355,24 +357,24 @@ async function getRobloxGroupIcon(groupId) {
 }
 
 async function getRobloxUniverseIdFromPlace(placeId) {
-    const res = await fetch(`https://apis.roblox.com/universes/v1/places/${placeId}/linked-universes`);
-    if (!res.ok) throw new Error(`Evren ID'si alınamadı: ${res.status} ${await res.text()}`);
-    const json = await res.json();
-    if (!json.universes || json.universes.length === 0) return null;
-    return json.universes[0].universeId;
+  const res = await fetch(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`);
+  if (!res.ok) throw new Error(`Evren ID'si alınamadı: ${res.status} ${await res.text()}`);
+  const json = await res.json();
+  return json.universeId || null;
 }
 
 async function getRobloxGameInfo(universeId) {
-    const res = await fetch(`https://gamesense.roblox.com/v2/universes/${universeId}/games?excludeExternal=true`);
-    if (!res.ok) throw new Error(`Oyun bilgisi alınamadı: ${res.status} ${await res.text()}`);
-    return res.json();
+  const res = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+  if (!res.ok) throw new Error(`Oyun bilgisi alınamadı: ${res.status} ${await res.text()}`);
+  const json = await res.json();
+  return json.data?.[0] || {};
 }
 
 async function getRobloxGameIcon(universeId) {
-    const res = await fetch(`https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&size=512x512&format=Png`);
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json.data?.[0]?.imageUrl || null;
+  const res = await fetch(`https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&size=512x512&format=Png`);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data?.[0]?.imageUrl || null;
 }
 
 // ==================== CLIENT ====================
@@ -727,7 +729,7 @@ client.on("interactionCreate", async interaction => {
     if (interaction.customId === "robloxprofil_prev" || interaction.customId === "robloxprofil_next") {
       const cache = robloxProfilCache.get(interaction.message.id);
       if (!cache) {
-        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("⏱️ Bu profil görüntüleyicisinin süresi doldu, komutu tekrar çalıştır.")] });
+        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("⏱️ Bu profil görüntüleyicisinin süresi doldu, komutu tekrar çalıştır.")], ephemeral: true });
       }
       const yeniSayfa = cache.sayfa + (interaction.customId === "robloxprofil_next" ? 1 : -1);
       const { embed, butonlar, sayfa } = robloxProfilSayfasiOlustur(cache.veri, yeniSayfa);
@@ -744,14 +746,13 @@ client.on("interactionCreate", async interaction => {
   const isYetkili = interaction.member?.roles.cache.has(config.YETKILI_ROL) || interaction.member?.permissions.has(PermissionsBitField.Flags.Administrator);
   const isEgitimHost = interaction.member?.roles.cache.has(EGITIM_ROL_ID);
 
-  // Yetkili komutları listesi güncellendi
   const yetkiliKomutlar = ["kick", "ban", "unban", "temizle", "yavas-mod", "kilitle", "kilit-ac", "rol-ver", "rol-al", "uyari-ver", "uyari-sil", "uyari-liste", "sicil-temizle", "dm-mesaj", "haber-yap", "egitim-duyuru", "duyuru", "aktiflik-denetleme", "rutbe-degistir", "terfi", "tenzil", "yenile", "dm-duyuru", "cookie-yenile"];
   if (yetkiliKomutlar.includes(cmd) && !isYetkili) {
-    return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bu komutu kullanmak için yeterli yetkiniz yok!")] });
+    return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bu komutu kullanmak için yeterli yetkiniz yok!")], ephemeral: true });
   }
 
   try {
-    // ==================== HERKES ====================
+    // ==================== HERKESE AÇIK KOMUTLAR ====================
     if (cmd === "ping") {
       await interaction.deferReply();
       const uptime = process.uptime();
@@ -810,7 +811,7 @@ client.on("interactionCreate", async interaction => {
       return interaction.editReply({ embeds: [embed] });
     }
 
-    // ==================== YETKİLİ KOMUTLARI ====================
+    // ==================== YETKİLİ MODERASYON ====================
     if (cmd === "kick") {
       await interaction.deferReply();
       const user = interaction.options.getUser("kullanici");
@@ -967,6 +968,7 @@ client.on("interactionCreate", async interaction => {
       return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`✅ **${user.tag}** kullanıcısından **${role.name}** rolü başarıyla alındı.`)] });
     }
 
+    // ==================== UYARI SİSTEMİ ====================
     if (cmd === "uyari-ver") {
       await interaction.deferReply();
       const user = interaction.options.getUser("kullanici");
@@ -1168,55 +1170,41 @@ client.on("interactionCreate", async interaction => {
       return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.ozel).setTitle("📋 İzinli Kullanıcılar Listesi").setDescription(desc.length > 1024 ? desc.slice(0, 1021) + "..." : desc)] });
     }
 
-    // ==================== SES KOMUTLARI ====================
-    if (cmd === "ses-gir") {
+    // ==================== DUYURU KOMUTLARI ====================
+    if (cmd === "duyuru") {
       await interaction.deferReply();
-      const vc = interaction.member.voice.channel;
-      if (!vc) return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Ses kanalına katılmak için önce bir ses kanalında olmalısınız.")] });
+      const mesaj = interaction.options.getString("mesaj");
+      const etiket = interaction.options.getString("etiket");
 
-      try {
-          joinVoiceChannel({channelId: vc.id, guildId: interaction.guild.id, adapterCreator: interaction.guild.voiceAdapterCreator});
-          await sendLogMessage(interaction.guild, "Ses Kanalına Girildi", `${interaction.user.tag} botu ${vc.name} kanalına soktu.`, RENK.ana, [{ name: "Kanal", value: `<#${vc.id}>`, inline: true }]);
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`✅ Başarıyla **${vc.name}** ses kanalına katıldım.`)] });
-      } catch(e) {
-          console.error(`Ses kanalına girerken hata: ${e}`);
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Ses kanalına girerken bir hata oluştu. İzinlerimi kontrol eder misin?")] });
+      let content = "";
+      if (etiket === "everyone") {
+        content = "@everyone";
+      } else if (etiket === "here") {
+        content = "@here";
+      } else if (etiket === "military_role") {
+        if (config.ASKERI_PERSONEL_ROL) {
+          content = `<@&${config.ASKERI_PERSONEL_ROL}>`;
+        } else {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Askeri Personel rolü ayarlanmamış. Lütfen .env dosyasını kontrol edin.")] });
+        }
       }
-    }
-
-    if (cmd === "ses-cik") {
-      await interaction.deferReply();
-      const connection = getVoiceConnection(interaction.guild.id);
-      if (connection) {
-        connection.destroy();
-        await sendLogMessage(interaction.guild, "Ses Kanalından Çıkıldı", `${interaction.user.tag} botu ses kanalından çıkardı.`, RENK.ana);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.uyari).setDescription("✅ Ses kanalından başarıyla ayrıldım.")] });
-      } else {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Zaten bir ses kanalında değilim.")] });
-      }
-    }
-
-    if (cmd === "yoklama") {
-      await interaction.deferReply();
-      const voiceChannel = interaction.member.voice.channel;
-
-      if (!voiceChannel) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Yoklama almak için bir ses kanalında olmalısınız.")] });
-      }
-
-      const members = voiceChannel.members.filter(m => !m.user.bot).map(member => `<@${member.id}>`).join("\n") || "Ses kanalında kimse yok.";
 
       const embed = new EmbedBuilder()
-        .setColor(RENK.ana)
-        .setTitle(`🎤 ${voiceChannel.name} Kanalı Yoklaması`)
-        .setDescription(members)
-        .setFooter({ text: `Toplam Üye: ${voiceChannel.members.size}` });
+        .setColor(RENK.uyari)
+        .setTitle("📢 Genel Duyuru")
+        .setDescription(mesaj)
+        .setTimestamp()
+        .setFooter({ text: `Duyuru Yapan: ${interaction.user.tag}` });
 
-      await sendLogMessage(interaction.guild, "Yoklama Alındı", `${interaction.user.tag} tarafından ${voiceChannel.name} kanalında yoklama alındı.`, RENK.ana, [{ name: "Katılanlar", value: members.length > 500 ? members.slice(0, 500) + "..." : members, inline: false }]);
-      return interaction.editReply({ embeds: [embed] });
+      await interaction.channel.send({ content: content, embeds: [embed] });
+      await sendLogMessage(interaction.guild, "Genel Duyuru Yapıldı", `Yeni bir genel duyuru yapıldı.`, RENK.uyari, [
+        { name: "Duyuru", value: mesaj, inline: false },
+        { name: "Etiket", value: etiket, inline: true },
+        { name: "Yayınlayan", value: `<@${interaction.user.id}>`, inline: true }
+      ]);
+      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription("✅ Duyuru başarıyla yapıldı.")] });
     }
 
-    // ==================== DUYURU KOMUTLARI ====================
     if (cmd === "haber-yap") {
       await interaction.deferReply();
       const baslik = interaction.options.getString("baslik");
@@ -1278,251 +1266,6 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    if (cmd === "oyun") {
-      const placeId = config.OYUN_PLACE_ID;
-      const oyunLink = placeId ? `https://www.roblox.com/games/${placeId}` : "https://www.roblox.com/tr/games/138257110169831/T-rk-Asker-Oyunu";
-      const embed = new EmbedBuilder()
-        .setColor(RENK.basari)
-        .setTitle("🎮 TSA | Resmi Oyun")
-        .setDescription("Resmi Roblox oyunumuza katılmak için aşağıdaki butona tıklayabilirsin!")
-        .setThumbnail(interaction.guild.iconURL({ dynamic: true }) || null)
-        .setFooter({ text: "TSA - Turkish Special Army" })
-        .setTimestamp();
-      const buton = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel("▶️ Oyuna Git").setStyle(ButtonStyle.Link).setURL(oyunLink)
-      );
-      return interaction.reply({ content: "@everyone", embeds: [embed], components: [buton] });
-    }
-
-    if (cmd === "grup") {
-      const groupId = config.GROUP_ID;
-      const grupLink = groupId ? `https://www.roblox.com/communities/${groupId}` : ROBLOX_GRUP_LINK;
-      const embed = new EmbedBuilder()
-        .setColor(RENK.ana)
-        .setTitle("👥 TSA | Resmi Grup")
-        .setDescription("Resmi Roblox grubumuza katılmak için aşağıdaki butona tıklayabilirsin!")
-        .setThumbnail(interaction.guild.iconURL({ dynamic: true }) || null)
-        .setFooter({ text: "TSA - Turkish Special Army" })
-        .setTimestamp();
-      const buton = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel("👥 Gruba Katıl").setStyle(ButtonStyle.Link).setURL(grupLink)
-      );
-      return interaction.reply({ content: "@everyone", embeds: [embed], components: [buton] });
-    }
-
-    if (cmd === "grup-bilgi") {
-      await interaction.deferReply();
-      const groupId = config.GROUP_ID;
-      if (!groupId) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `GROUP_ID` ayarlanmamış.")] });
-      }
-      try {
-        const [grup, icon] = await Promise.all([
-          getRobloxGroupInfo(groupId),
-          getRobloxGroupIcon(groupId)
-        ]);
-
-        const embed = new EmbedBuilder()
-          .setColor(RENK.ana)
-          .setTitle(`👥 ${grup.name}`)
-          .setURL(`https://www.roblox.com/communities/${groupId}`)
-          .setThumbnail(icon)
-          .addFields(
-            { name: "🆔 Grup ID", value: groupId.toString(), inline: true },
-            { name: "👑 Sahibi", value: grup.owner?.username ? `@${grup.owner.username}` : "Bilinmiyor", inline: true },
-            { name: "👥 Üye Sayısı", value: grup.memberCount?.toLocaleString("tr-TR") || "Bilinmiyor", inline: true }
-          )
-          .setDescription(grup.description ? grup.description.slice(0, 500) : "Açıklama yok.")
-          .setFooter({ text: "TSA - Turkish Special Army" })
-          .setTimestamp();
-
-        if (grup.shout?.body) {
-          embed.addFields({ name: "📢 Son Duyuru (Shout)", value: grup.shout.body.slice(0, 300) });
-        }
-
-        return interaction.editReply({ embeds: [embed] });
-      } catch (e) {
-        console.error("Grup bilgisi hatası:", e);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Grup bilgisi alınırken bir hata oluştu.")] });
-      }
-    }
-
-    if (cmd === "aktiflik-sorgu") {
-      await interaction.deferReply();
-      const placeId = config.OYUN_PLACE_ID;
-      if (!placeId) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `OYUN_PLACE_ID` ayarlanmamış.")] });
-      }
-      try {
-        const universeId = await getRobloxUniverseIdFromPlace(placeId);
-        if (!universeId) {
-            return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Bu oyun yeri için evren ID'si bulunamadı.")] });
-        }
-        const [oyun, icon] = await Promise.all([
-          getRobloxGameInfo(universeId),
-          getRobloxGameIcon(universeId)
-        ]);
-
-        if (!oyun) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Oyun bilgisi bulunamadı.")] });
-        }
-
-        const embed = new EmbedBuilder()
-          .setColor(RENK.basari)
-          .setTitle(`🎮 ${oyun.name}`)
-          .setURL(`https://www.roblox.com/games/${placeId}`)
-          .setThumbnail(icon)
-          .addFields(
-            { name: "🟢 Anlık Oyuncu", value: oyun.playing?.toLocaleString("tr-TR") || "0", inline: true },
-            { name: "👁️ Toplam Ziyaret", value: oyun.visits?.toLocaleString("tr-TR") || "0", inline: true },
-            { name: "⭐ Favori Sayısı", value: oyun.favoritedCount?.toLocaleString("tr-TR") || "0", inline: true }
-          )
-          .setFooter({ text: "TSA - Turkish Special Army" })
-          .setTimestamp();
-
-        return interaction.editReply({ embeds: [embed] });
-      } catch (e) {
-        console.error("Oyun bilgisi hatası:", e);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Oyun bilgisi alınırken bir hata oluştu.")] });
-      }
-    }
-
-    // ==================== ROBLOX RÜTBE SİSTEMİ ====================
-    if (cmd === "rutbe-sorgu") {
-      await interaction.deferReply();
-      const groupId = config.GROUP_ID;
-      if (!groupId) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `GROUP_ID` ayarlanmamış.")] });
-      }
-      const robloxIsim = interaction.options.getString("roblox_isim");
-      try {
-        const robloxUser = await getRobloxUserByUsername(robloxIsim);
-        if (!robloxUser) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** adında bir Roblox kullanıcısı bulunamadı.`)] });
-        }
-
-        const [userDetail, avatarUrl, groups] = await Promise.all([
-          getRobloxUserDetail(robloxUser.id),
-          getRobloxAvatarUrl(robloxUser.id),
-          getRobloxGroups(robloxUser.id)
-        ]);
-
-        const { embed } = robloxProfilSayfasiOlustur({ baslik: robloxUser.displayName, url: `https://www.roblox.com/users/${robloxUser.id}/profile`, avatarUrl, detail: userDetail, groups }, 0);
-
-        return interaction.editReply({ embeds: [embed] });
-      } catch (e) {
-        console.error("Roblox profil sorgulama hatası:", e);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox profil bilgisi alınırken bir hata oluştu.")] });
-      }
-    }
-
-    if (cmd === "rutbe-degistir" || cmd === "terfi" || cmd === "tenzil") {
-      await interaction.deferReply();
-
-      if (!config.ROBLOX_COOKIE) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `ROBLOX_COOKIE` ayarlanmamış, bu komut kullanılamaz.")] });
-      }
-      if (!robloxGirisYapildi) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bot şu anda Roblox'a giriş yapamamış durumda (cookie geçersiz veya süresi dolmuş olabilir). Konsol loglarını kontrol et veya /cookie-yenile ile güncelle.")] });
-      }
-      const groupId = config.GROUP_ID;
-      if (!groupId) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `GROUP_ID` ayarlanmamış.")] });
-      }
-
-      const robloxIsim = interaction.options.getString("roblox_isim");
-      const sebep = interaction.options.getString("sebep");
-
-      try {
-        const userId = await noblox.getIdFromUsername(robloxIsim);
-        if (!userId) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** adında bir Roblox kullanıcısı bulunamadı.`)] });
-        }
-
-        const eskiRutbeAdi = await noblox.getRankNameInGroup(groupId, userId);
-        const eskiRankNum = await noblox.getRankInGroup(groupId, userId);
-        const avatarUrl = await getRobloxAvatarUrl(userId);
-
-        const roller = (await getRobloxGroupRoles(groupId)).slice().sort((a, b) => a.rank - b.rank);
-
-        let hedefRol, baslik, renk;
-
-        if (cmd === "terfi" || cmd === "tenzil") {
-          const suankiIndex = roller.findIndex(r => r.rank === eskiRankNum);
-          const hedefIndex = suankiIndex + (cmd === "terfi" ? 1 : -1);
-
-          if (suankiIndex === -1 || hedefIndex < 0 || hedefIndex >= roller.length) {
-            const sinirMesaji = cmd === "terfi" ? "zaten en üst rütbede, daha fazla terfi ettirilemez." : "zaten en alt rütbede, daha fazla tenzil edilemez.";
-            return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** ${sinirMesaji}`)] });
-          }
-          hedefRol = roller[hedefIndex];
-          baslik = cmd === "terfi" ? "⬆️ Terfi Verildi" : "⬇️ Tenzil Yapıldı";
-          renk = cmd === "terfi" ? RENK.basari : RENK.hata;
-        } else {
-          const rutbeAdi = interaction.options.getString("rutbe");
-          hedefRol = roller.find(r => r.name.toLocaleLowerCase("tr-TR") === rutbeAdi.toLocaleLowerCase("tr-TR"));
-          if (!hedefRol) {
-            return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${rutbeAdi}** adında bir rütbe bulunamadı. Lütfen listeden bir seçenek seç.`)] });
-          }
-          baslik = "🔄 Rütbe Değiştirildi";
-          renk = RENK.ozel;
-        }
-
-        // Güvenlik Kontrolü 1: Botun kendi rütbesinden yüksek veya eşit rütbe atanamaz.
-        const botRank = await robloxBotRankiGetir(groupId);
-        if (botRank !== null && hedefRol.rank >= botRank) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-            `❌ **${hedefRol.name}** rütbesi, botun kendi rütbesinden (**${await noblox.getRankNameInGroup(groupId, robloxBotUserId) || botRank}**) yüksek veya eşit olduğu için atanamaz.\n` +
-            `Bu, botun/sahibin üstüne çıkarılmasını önlemek için bilerek engellendi.`
-          )] });
-        }
-
-        // Güvenlik Kontrolü 2: Kullanıcının kendi rütbesi, atayacağı rütbeden düşük olmalı.
-        const interactionUserRobloxId = data.robloxBaglantilari[interaction.user.id];
-        if ((cmd === "terfi" || cmd === "tenzil") && interactionUserRobloxId) {
-            const interactionUserCurrentRank = await noblox.getRankInGroup(groupId, interactionUserRobloxId);
-            if (hedefRol.rank > interactionUserCurrentRank) {
-              return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-                `❌ Kendi rütbenizden (${await noblox.getRankNameInGroup(groupId, interactionUserRobloxId)}) daha yüksek bir rütbe (${hedefRol.name}) atayamazsınız.`
-              )] });
-            }
-        } else if (cmd !== "rutbe-degistir" && !interactionUserRobloxId) {
-             return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox hesabınız Discord hesabınıza bağlı değil. Lütfen `/yenile` komutunu kullanarak bağlayın. Bu komut, rütbe atama yetkinizi kontrol etmek için gereklidir.")] });
-        }
-
-        await noblox.setRank(groupId, userId, hedefRol.rank);
-        const yeniRutbeAdi = hedefRol.name;
-
-        const embed = new EmbedBuilder()
-          .setColor(renk)
-          .setTitle(baslik)
-          .setThumbnail(avatarUrl)
-          .addFields(
-            { name: "👤 Roblox Kullanıcı", value: robloxIsim, inline: true },
-            { name: "📤 Eski Rütbe", value: eskiRutbeAdi || "Bilinmiyor", inline: true },
-            { name: "📥 Yeni Rütbe", value: yeniRutbeAdi || "Bilinmiyor", inline: true },
-            { name: "📝 Sebep", value: sebep, inline: false },
-            { name: "👮 İşlemi Yapan", value: `<@${interaction.user.id}>`, inline: false }
-          )
-          .setFooter({ text: "TSA - Turkish Special Army" })
-          .setTimestamp();
-
-        await sendLogMessage(interaction.guild, baslik, `${robloxIsim} kullanıcısının rütbesi değiştirildi: ${eskiRutbeAdi} → ${yeniRutbeAdi}`, renk, [
-          { name: "Roblox Kullanıcı", value: robloxIsim, inline: true },
-          { name: "Sebep", value: sebep, inline: true },
-          { name: "İşlemi Yapan", value: `<@${interaction.user.id}>`, inline: true }
-        ]);
-
-        return interaction.editReply({ embeds: [embed] });
-      } catch (e) {
-        console.error("Rütbe değiştirme hatası:", e);
-        const mesaj = e.message?.includes("permission") || e.message?.includes("Forbidden") || e.message?.includes("user is not in the group")
-          ? "❌ Botun bu işlemi yapacak yetkisi yok. Roblox grubunda botun hesabının, hedef kullanıcıdan daha yüksek bir rütbede olduğundan ve gerekli izinlere sahip olduğundan emin ol. Kullanıcı grupta olmayabilir."
-          : "❌ Rütbe değiştirilirken bir hata oluştu. Kullanıcı adını, rütbeyi ve diğer detayları kontrol edip tekrar dene.";
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(mesaj)] });
-      }
-    }
-
     if (cmd === "dm-mesaj") {
       await interaction.deferReply();
       const target = interaction.options.getUser("kullanici");
@@ -1541,12 +1284,11 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    if (cmd === "dm-duyuru") { // Yeni eklenen DM duyuru komutu
+    if (cmd === "dm-duyuru") {
       await interaction.deferReply({ ephemeral: true });
       const hedefRol = interaction.options.getRole("hedef_rol");
       const mesajIcerigi = interaction.options.getString("mesaj_icerigi");
 
-      // YETKİLİ DM DUYURU ROL ID (Bu ID'yi sunucunuza göre güncelleyin veya .env'den alın)
       const YETKILI_DM_DUYURU_ROL_ID = "1518357617280417993";
 
       if (!interaction.member.roles.cache.has(YETKILI_DM_DUYURU_ROL_ID) && !interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -1584,62 +1326,52 @@ client.on("interactionCreate", async interaction => {
       return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`✅ **${hedefRol.name}** rolündeki **${sentCount}** kullanıcıya DM duyurusu başarıyla gönderildi. **${failedCount}** kullanıcıya gönderilemedi (DM'leri kapalı olabilir).`)] });
     }
 
-    if (cmd === "yenile") {
-      await interaction.deferReply({ ephemeral: true });
-      const robloxUsername = interaction.options.getString("roblox_isim");
+    // ==================== SES KOMUTLARI ====================
+    if (cmd === "ses-gir") {
+      await interaction.deferReply();
+      const vc = interaction.member.voice.channel;
+      if (!vc) return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Ses kanalına katılmak için önce bir ses kanalında olmalısınız.")] });
 
       try {
-        const robloxUser = await getRobloxUserByUsername(robloxUsername);
-        if (!robloxUser) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxUsername}** adında bir Roblox kullanıcısı bulunamadı.`)] });
-        }
-
-        data.robloxBaglantilari[interaction.user.id] = robloxUser.id;
-        saveData();
-
-        return interaction.editReply({
-          embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(
-            `✅ Discord hesabınız başarıyla Roblox hesabınız **${robloxUser.name}** (${robloxUser.id}) ile bağlandı.`
-          )]
-        });
-      } catch (e) {
-        console.error("Roblox hesabı bağlama hatası:", e);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox hesabınızı bağlarken bir hata oluştu. Lütfen tekrar deneyin.")] });
+          joinVoiceChannel({channelId: vc.id, guildId: interaction.guild.id, adapterCreator: interaction.guild.voiceAdapterCreator});
+          await sendLogMessage(interaction.guild, "Ses Kanalına Girildi", `${interaction.user.tag} botu ${vc.name} kanalına soktu.`, RENK.ana, [{ name: "Kanal", value: `<#${vc.id}>`, inline: true }]);
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`✅ Başarıyla **${vc.name}** ses kanalına katıldım.`)] });
+      } catch(e) {
+          console.error(`Ses kanalına girerken hata: ${e}`);
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Ses kanalına girerken bir hata oluştu. İzinlerimi kontrol eder misin?")] });
       }
     }
 
-    if (cmd === "duyuru") {
+    if (cmd === "ses-cik") {
       await interaction.deferReply();
-      const mesaj = interaction.options.getString("mesaj");
-      const etiket = interaction.options.getString("etiket");
+      const connection = getVoiceConnection(interaction.guild.id);
+      if (connection) {
+        connection.destroy();
+        await sendLogMessage(interaction.guild, "Ses Kanalından Çıkıldı", `${interaction.user.tag} botu ses kanalından çıkardı.`, RENK.ana);
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.uyari).setDescription("✅ Ses kanalından başarıyla ayrıldım.")] });
+      } else {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Zaten bir ses kanalında değilim.")] });
+      }
+    }
 
-      let content = "";
-      if (etiket === "everyone") {
-        content = "@everyone";
-      } else if (etiket === "here") {
-        content = "@here";
-      } else if (etiket === "military_role") {
-        if (config.ASKERI_PERSONEL_ROL) {
-          content = `<@&${config.ASKERI_PERSONEL_ROL}>`;
-        } else {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Askeri Personel rolü ayarlanmamış. Lütfen .env dosyasını kontrol edin.")] });
-        }
+    if (cmd === "yoklama") {
+      await interaction.deferReply();
+      const voiceChannel = interaction.member.voice.channel;
+
+      if (!voiceChannel) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Yoklama almak için bir ses kanalında olmalısınız.")] });
       }
 
-      const embed = new EmbedBuilder()
-        .setColor(RENK.uyari)
-        .setTitle("📢 Genel Duyuru")
-        .setDescription(mesaj)
-        .setTimestamp()
-        .setFooter({ text: `Duyuru Yapan: ${interaction.user.tag}` });
+      const members = voiceChannel.members.filter(m => !m.user.bot).map(member => `<@${member.id}>`).join("\n") || "Ses kanalında kimse yok.";
 
-      await interaction.channel.send({ content: content, embeds: [embed] });
-      await sendLogMessage(interaction.guild, "Genel Duyuru Yapıldı", `Yeni bir genel duyuru yapıldı.`, RENK.uyari, [
-        { name: "Duyuru", value: mesaj, inline: false },
-        { name: "Etiket", value: etiket, inline: true },
-        { name: "Yayınlayan", value: `<@${interaction.user.id}>`, inline: true }
-      ]);
-      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription("✅ Duyuru başarıyla yapıldı.")] });
+      const embed = new EmbedBuilder()
+        .setColor(RENK.ana)
+        .setTitle(`🎤 ${voiceChannel.name} Kanalı Yoklaması`)
+        .setDescription(members)
+        .setFooter({ text: `Toplam Üye: ${voiceChannel.members.size}` });
+
+      await sendLogMessage(interaction.guild, "Yoklama Alındı", `${interaction.user.tag} tarafından ${voiceChannel.name} kanalında yoklama alındı.`, RENK.ana, [{ name: "Katılanlar", value: members.length > 500 ? members.slice(0, 500) + "..." : members, inline: false }]);
+      return interaction.editReply({ embeds: [embed] });
     }
 
     // ==================== MÜZİK KOMUTLARI ====================
@@ -1661,7 +1393,7 @@ client.on("interactionCreate", async interaction => {
         }
 
         const akis = ytdlpAkisOlustur(bulunan.url);
-        streamInfo = { stream: akis, type: StreamType.Raw, title: bulunan.title, url: bulunan.url };
+        streamInfo = { stream: akis, type: StreamType.Raw, title: bulunan.title, url: bulunan.url, guildId: interaction.guild.id };
       } catch (e) {
         console.error("Müzik akışı alınırken hata:", e);
         const zamanAsimiMi = e.message?.includes("zaman aşımına uğradı");
@@ -1736,339 +1468,21 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    // ==================== DİĞER KOMUTLAR ====================
-    if (cmd === "rutbeler") {
-      await interaction.deferReply();
-
-      const yedekRutbeTablosu = `
-255. TSA
-254. Grup Sahibi
-253. 2. Grup Sahibi
-252. Geliştirme Ofisi Başkanı
-251. Geliştirme Ofisi
-250. Stajyer Geliştirme Ofisi
-40. Rütbelendirme Botu
-36. Yardımcı Grup Sahibi
-35. OF-10 Mareşal
-34. Yönetim Kurulu Başkanı
-33. Yönetim Kurulu Başkan Y.
-32. Yönetim Kurulu
-31. Yüksek Askeri Şura
-30. Genel Kurmay Başkanı
-29. Genel Kurmay
-27. Lider
-26. Disiplin Kurulu
-25. Ordu Komutanı
-23. Paşa
-20. [OF-9] Orgeneral
-19. [OF-8] Korgeneral
-18. [OF-7] Tümgeneral
-17. [OF-6] Tuğgeneral
-16. [OF-5] Albay
-15. [OF-4] Yarbay
-14. [OF-3] Binbaşı
-13. [OF-2] YüzBaşı
-12. [OF-1/C] Üsteğmen
-11. [OF-1/B] Teğmen
-10. [OF-1/A] Asteğmen
-9. [OR-9] Astsubay Kıdemli Başçavuş
-8. [OR-8] Astsubay Başçavuş
-7. [OR-7] Astsubay Üstçavuş
-6. [OR-6] Astsubay Çavuş
-5. [OR-5] Uzman Çavuş
-4. [OR-4] Çavuş
-3. [OR-3] Uzman Onbaşı
-2. [OR-2] Onbaşı
-1. [OR-1] Acemi Er
-`;
-
-      const chunkText = (lines) => {
-        const chunks = [];
-        let current = "";
-        for (const line of lines) {
-          if ((current + line + "\n").length > 1000) {
-            chunks.push(current);
-            current = "";
-          }
-          current += line + "\n";
-        }
-        if (current) chunks.push(current);
-        return chunks;
-      };
-
-      const embed = new EmbedBuilder()
-        .setColor(RENK.ozel)
-        .setTitle("👑 TSA Rütbe Tablosu")
-        .setFooter({ text: "TSA Discord Bot" })
-        .setTimestamp();
-
+    // ==================== ROBLOX GENEL KOMUTLARI ====================
+    if (cmd === "grup") {
       const groupId = config.GROUP_ID;
-      if (!groupId) {
-        embed.setDescription("⚠️ `GROUP_ID` ayarlanmadığı için canlı veri çekilemedi, yedek tablo gösteriliyor.\n" + yedekRutbeTablosu);
-        return interaction.editReply({ embeds: [embed] });
-      }
-
-      try {
-        const roller = await getRobloxGroupRoles(groupId);
-        const siraliRoller = roller.slice().sort((a, b) => b.rank - a.rank);
-        const satirlar = siraliRoller.map(r => `**${r.rank}.** ${r.name} — 👥 ${r.memberCount ?? 0}`);
-
-        embed.setDescription("Roblox grubundan canlı olarak çekilen güncel rütbe listesi:");
-        chunkText(satirlar).forEach((chunk, i) => {
-          embed.addFields({ name: i === 0 ? "📋 Rütbeler" : "📋 Rütbeler (devam)", value: chunk });
-        });
-
-        return interaction.editReply({ embeds: [embed] });
-      } catch (e) {
-        console.error("Rütbe listesi hatası:", e);
-        embed.setDescription("⚠️ Roblox'tan canlı veri çekilirken hata oluştu, yedek tablo gösteriliyor.\n" + yedekRutbeTablosu);
-        return interaction.editReply({ embeds: [embed] });
-      }
-    }
-
-    if (cmd === "liderlik") {
-      const siralama = Object.entries(data.aktiflik || {})
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-
-      if (siralama.length === 0) {
-        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.altin).setTitle("👑 En Aktif Üyeler").setDescription("Henüz hiç aktiflik verisi toplanmadı.")] });
-      }
-
-      const madalyalar = ["🥇", "🥈", "🥉"];
-      const satirlar = siralama.map(([userId, sayi], i) => {
-        const sira = madalyalar[i] || `**${i + 1}.**`;
-        return `${sira} <@${userId}> — **${sayi}** mesaj`;
-      });
-
+      const grupLink = groupId ? `https://www.roblox.com/communities/${groupId}` : ROBLOX_GRUP_LINK;
       const embed = new EmbedBuilder()
-        .setColor(RENK.altin)
-        .setTitle("👑 En Aktif Üyeler")
-        .setDescription(satirlar.join("\n"))
-        .setFooter({ text: "TSA Discord Bot — Sunucudaki toplam mesaj sayısına göre sıralanmıştır" })
+        .setColor(RENK.ana)
+        .setTitle("👥 TSA | Resmi Grup")
+        .setDescription("Resmi Roblox grubumuza katılmak için aşağıdaki butona tıklayabilirsin!")
+        .setThumbnail(interaction.guild.iconURL({ dynamic: true }) || null)
+        .setFooter({ text: "TSA - Turkish Special Army" })
         .setTimestamp();
-      return interaction.reply({ embeds: [embed] });
-    }
-
-    if (cmd === "sunucu-bilgi") {
-      await interaction.deferReply();
-      const guild = interaction.guild;
-      const owner = await guild.fetchOwner();
-
-      const embed = new EmbedBuilder()
-        .setColor(RENK.ana)
-        .setTitle(`${guild.name} Sunucu Bilgileri`)
-        .setThumbnail(guild.iconURL({ dynamic: true }))
-        .addFields(
-          { name: "🆔 Sunucu ID", value: guild.id, inline: true },
-          { name: "👑 Sunucu Sahibi", value: `<@${owner.id}>`, inline: true },
-          { name: "👥 Üye Sayısı", value: guild.memberCount.toString(), inline: true },
-          { name: "💬 Kanal Sayısı", value: guild.channels.cache.size.toString(), inline: true },
-          { name: "✨ Boost Seviyesi", value: `Seviye ${guild.premiumTier} (${guild.premiumSubscriptionCount} Boost)`, inline: true },
-          { name: "🗓️ Kuruluş Tarihi", value: `<t:${parseInt(guild.createdTimestamp / 1000)}:D>`, inline: true }
-        )
-        .setFooter({ text: "TSA Discord Bot" });
-
-      return interaction.editReply({ embeds: [embed] });
-    }
-
-    if (cmd === "kullanici-bilgi") {
-      await interaction.deferReply();
-      const user = interaction.options.getUser("kullanici");
-      const member = await interaction.guild.members.fetch(user.id).catch(() => null);
-
-      if (!member) return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Kullanıcı bulunamadı veya sunucuda değil.")] });
-
-      const roles = member.roles.cache
-        .filter(role => role.id !== interaction.guild.id)
-        .sort((a, b) => b.position - a.position)
-        .map(role => `<@&${role.id}>`)
-        .join(", ") || "Rol bulunmuyor.";
-
-      const embed = new EmbedBuilder()
-        .setColor(member.displayColor || RENK.ana)
-        .setTitle(`${user.tag} Kullanıcı Bilgileri`)
-        .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 256 }))
-        .addFields(
-          { name: "🆔 Kullanıcı ID", value: user.id, inline: true },
-          { name: "🗓️ Sunucuya Katılma Tarihi", value: `<t:${parseInt(member.joinedTimestamp / 1000)}:D>`, inline: true },
-          { name: "🗓️ Hesap Oluşturma Tarihi", value: `<t:${parseInt(user.createdTimestamp / 1000)}:D>`, inline: true },
-          { name: `💎 Roller (${member.roles.cache.filter(role => role.id !== interaction.guild.id).size})`, value: roles.length > 1000 ? roles.slice(0, 1000) + "..." : roles, inline: false }
-        )
-        .setFooter({ text: "TSA Discord Bot" });
-
-      return interaction.editReply({ embeds: [embed] });
-    }
-
-    if (cmd === "rutbe-bilgi") {
-      await interaction.deferReply();
-      const role = interaction.options.getRole("rol");
-
-      const embed = new EmbedBuilder()
-        .setColor(role.color || RENK.ana)
-        .setTitle(`👑 ${role.name} Rol Bilgileri`)
-        .addFields(
-          { name: "🆔 Rol ID", value: role.id, inline: true },
-          { name: "👥 Üye Sayısı", value: role.members.size.toString(), inline: true },
-          { name: "🎨 Renk Kodu", value: role.hexColor, inline: true },
-          { name: "🗓️ Oluşturulma Tarihi", value: `<t:${parseInt(role.createdTimestamp / 1000)}:D>`, inline: true },
-          { name: "⬆️ Ayrı Gösteriliyor mu?", value: role.hoist ? "✅ Evet" : "❌ Hayır", inline: true },
-          { name: "📣 Bahsedilebilir mi?", value: role.mentionable ? "✅ Evet" : "❌ Hayır", inline: true }
-        )
-        .setFooter({ text: "TSA Discord Bot" })
-        .setTimestamp();
-
-      return interaction.editReply({ embeds: [embed] });
-    }
-
-    // ==================== ROBLOX COOKIE YÖNETİM KOMUTLARI ====================
-    if (cmd === "cookie-durum") {
-      await interaction.deferReply({ ephemeral: true });
-
-      let durumMesaji;
-      if (!config.ROBLOX_COOKIE) {
-        durumMesaji = "ℹ️ ROBLOX_COOKIE `.env` dosyasında ayarlanmamış. Rütbe komutları çalışmayacaktır.";
-      } else if (!robloxGirisYapildi) {
-        durumMesaji = "❌ Roblox cookie'si geçerli değil veya süresi dolmuş. Lütfen `/cookie-yenile` komutu ile güncelleyin.";
-      } else {
-        const gecenSureMs = Date.now() - robloxCookieSonGecerlilik;
-        const gecenSaniye = Math.floor(gecenSureMs / 1000);
-        const gecenDakika = Math.floor(gecenSaniye / 60);
-        const gecenSaat = Math.floor(gecenDakika / 60);
-        const zamanGostergesi = gecenSaat > 0 ? `${gecenSaat} saat ` : (gecenDakika > 0 ? `${gecenDakika} dakika ` : `${gecenSaniye} saniye `);
-        durumMesaji = `✅ Roblox cookie'si geçerli görünüyor. Son başarılı giriş: Yaklaşık ${zamanGostergesi}önce.\n` +
-                     `Bot, **${robloxBotAdi || 'Bilinmiyor'}** (${robloxBotUserId || 'Bilinmiyor'}) kullanıcı adıyla bağlı.`;
-      }
-      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(robloxGirisYapildi ? RENK.basari : (config.ROBLOX_COOKIE ? RENK.hata : RENK.ana)).setDescription(durumMesaji)] });
-    }
-
-    if (cmd === "cookie-yenile") {
-      await interaction.deferReply({ ephemeral: true });
-      const yeniCookie = interaction.options.getString("yeni_cookie");
-      console.log("Yeni cookie ile giriş deneniyor...");
-      const girisSonucu = await robloxGirisYap(yeniCookie);
-
-      if (girisSonucu) {
-        await interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(
-          `✅ Yeni Roblox cookie'si ile giriş denemesi yapıldı.\n` +
-          `Bot, **${girisSonucu.name}** (${girisSonucu.id}) olarak bağlandı.\n\n` +
-          `**ÖNEMLİ:** Değişikliklerin tam olarak etkili olması için **BOTU YENİDEN BAŞLATMANIZ GEREKMEKTEDİR.**`
-        )] });
-      } else {
-        await interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          "❌ Yeni Roblox cookie'si ile giriş yapılamadı. Lütfen cookie'nin geçerli olduğundan ve doğru formatta olduğundan emin olun. Hata detayları için konsolu kontrol edin."
-        )] });
-      }
-    }
-
-    // ==================== SES KOMUTLARI ====================
-    if (cmd === "ses-gir") {
-      await interaction.deferReply();
-      const vc = interaction.member.voice.channel;
-      if (!vc) return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Ses kanalına katılmak için önce bir ses kanalında olmalısınız.")] });
-
-      try {
-          joinVoiceChannel({channelId: vc.id, guildId: interaction.guild.id, adapterCreator: interaction.guild.voiceAdapterCreator});
-          await sendLogMessage(interaction.guild, "Ses Kanalına Girildi", `${interaction.user.tag} botu ${vc.name} kanalına soktu.`, RENK.ana, [{ name: "Kanal", value: `<#${vc.id}>`, inline: true }]);
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`✅ Başarıyla **${vc.name}** ses kanalına katıldım.`)] });
-      } catch(e) {
-          console.error(`Ses kanalına girerken hata: ${e}`);
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Ses kanalına girerken bir hata oluştu. İzinlerimi kontrol eder misin?")] });
-      }
-    }
-
-    if (cmd === "ses-cik") {
-      await interaction.deferReply();
-      const connection = getVoiceConnection(interaction.guild.id);
-      if (connection) {
-        connection.destroy();
-        await sendLogMessage(interaction.guild, "Ses Kanalından Çıkıldı", `${interaction.user.tag} botu ses kanalından çıkardı.`, RENK.ana);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.uyari).setDescription("✅ Ses kanalından başarıyla ayrıldım.")] });
-      } else {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Zaten bir ses kanalında değilim.")] });
-      }
-    }
-
-    if (cmd === "yoklama") {
-      await interaction.deferReply();
-      const voiceChannel = interaction.member.voice.channel;
-
-      if (!voiceChannel) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Yoklama almak için bir ses kanalında olmalısınız.")] });
-      }
-
-      const members = voiceChannel.members.filter(m => !m.user.bot).map(member => `<@${member.id}>`).join("\n") || "Ses kanalında kimse yok.";
-
-      const embed = new EmbedBuilder()
-        .setColor(RENK.ana)
-        .setTitle(`🎤 ${voiceChannel.name} Kanalı Yoklaması`)
-        .setDescription(members)
-        .setFooter({ text: `Toplam Üye: ${voiceChannel.members.size}` });
-
-      await sendLogMessage(interaction.guild, "Yoklama Alındı", `${interaction.user.tag} tarafından ${voiceChannel.name} kanalında yoklama alındı.`, RENK.ana, [{ name: "Katılanlar", value: members.length > 500 ? members.slice(0, 500) + "..." : members, inline: false }]);
-      return interaction.editReply({ embeds: [embed] });
-    }
-
-    // ==================== DUYURU KOMUTLARI ====================
-    if (cmd === "haber-yap") {
-      await interaction.deferReply();
-      const baslik = interaction.options.getString("baslik");
-      const icerik = interaction.options.getString("icerik");
-      const resim = interaction.options.getString("resim");
-
-      const embed = new EmbedBuilder()
-        .setColor(RENK.ana)
-        .setTitle(`📰 ${baslik}`)
-        .setDescription(icerik)
-        .setTimestamp()
-        .setFooter({ text: `Haberi Yapan: ${interaction.user.tag}` });
-      if (resim) embed.setImage(resim);
-
-      const kanal = interaction.guild.channels.cache.get(config.HABER_KANAL);
-      if (kanal) {
-        await kanal.send({ content: "@everyone", embeds: [embed] });
-        await sendLogMessage(interaction.guild, "Haber Yayınlandı", `Yeni bir haber yayınlandı: **${baslik}**`, RENK.ana, [
-          { name: "Başlık", value: baslik, inline: false },
-          { name: "Yayınlayan", value: `<@${interaction.user.id}>`, inline: true }
-        ]);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription("✅ Haber başarıyla yayınlandı.")] });
-      } else {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Haber kanalı bulunamadı veya ayarlanmadı.")] });
-      }
-    }
-
-    if (cmd === "egitim-duyuru") {
-      await interaction.deferReply();
-      const host = interaction.options.getUser("host");
-      const cohost = interaction.options.getUser("cohost");
-      const tur = interaction.options.getString("tur");
-      const zaman = interaction.options.getString("zaman");
-
-      const embed = new EmbedBuilder()
-        .setColor(RENK.ozel)
-        .setTitle("📚 Eğitim Duyurusu")
-        .addFields(
-          { name: "🎓 Host", value: `${host}`, inline: true },
-          { name: "🎓 Co-Host", value: `${cohost}`, inline: true },
-          { name: "📖 Tür", value: tur, inline: true },
-          { name: "🕒 Zaman", value: zaman, inline: true }
-        )
-        .setTimestamp()
-        .setFooter({ text: "TSA Discord Bot" });
-
-      const kanal = interaction.guild.channels.cache.get(EGITIM_KANAL_ID);
-      if (kanal) {
-        await kanal.send({ content: "@everyone", embeds: [embed] });
-        await sendLogMessage(interaction.guild, "Eğitim Duyurusu Yapıldı", `Yeni bir eğitim duyurusu yapıldı: **${tur}**`, RENK.ozel, [
-          { name: "Host", value: `<@${host.id}>`, inline: true },
-          { name: "Tür", value: tur, inline: true },
-          { name: "Zaman", value: zaman, inline: true },
-          { name: "Yayınlayan", value: `<@${interaction.user.id}>`, inline: true }
-        ]);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription("✅ Eğitim duyurusu başarıyla yapıldı.")] });
-      } else {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Eğitim kanalı bulunamadı veya ayarlanmadı.")] });
-      }
+      const buton = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setLabel("👥 Gruba Katıl").setStyle(ButtonStyle.Link).setURL(grupLink)
+      );
+      return interaction.reply({ content: "@everyone", embeds: [embed], components: [buton] });
     }
 
     if (cmd === "oyun") {
@@ -2083,22 +1497,6 @@ client.on("interactionCreate", async interaction => {
         .setTimestamp();
       const buton = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setLabel("▶️ Oyuna Git").setStyle(ButtonStyle.Link).setURL(oyunLink)
-      );
-      return interaction.reply({ content: "@everyone", embeds: [embed], components: [buton] });
-    }
-
-    if (cmd === "grup") {
-      const groupId = config.GROUP_ID;
-      const grupLink = groupId ? `https://www.roblox.com/communities/${groupId}` : ROBLOX_GRUP_LINK;
-      const embed = new EmbedBuilder()
-        .setColor(RENK.ana)
-        .setTitle("👥 TSA | Resmi Grup")
-        .setDescription("Resmi Roblox grubumuza katılmak için aşağıdaki butona tıklayabilirsin!")
-        .setThumbnail(interaction.guild.iconURL({ dynamic: true }) || null)
-        .setFooter({ text: "TSA - Turkish Special Army" })
-        .setTimestamp();
-      const buton = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel("👥 Gruba Katıl").setStyle(ButtonStyle.Link).setURL(grupLink)
       );
       return interaction.reply({ content: "@everyone", embeds: [embed], components: [buton] });
     }
@@ -2156,7 +1554,7 @@ client.on("interactionCreate", async interaction => {
           getRobloxGameIcon(universeId)
         ]);
 
-        if (!oyun) {
+        if (!oyun || !oyun.name) {
           return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Oyun bilgisi bulunamadı.")] });
         }
 
@@ -2180,7 +1578,6 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    // ==================== ROBLOX RÜTBE SİSTEMİ ====================
     if (cmd === "rutbe-sorgu") {
       await interaction.deferReply();
       const groupId = config.GROUP_ID;
@@ -2200,335 +1597,23 @@ client.on("interactionCreate", async interaction => {
           getRobloxGroups(robloxUser.id)
         ]);
 
-        const { embed } = robloxProfilSayfasiOlustur({ baslik: robloxUser.displayName, url: `https://www.roblox.com/users/${robloxUser.id}/profile`, avatarUrl, detail: userDetail, groups }, 0);
-
-        return interaction.editReply({ embeds: [embed] });
+        const profilVeri = { 
+          baslik: robloxUser.displayName, 
+          url: `https://www.roblox.com/users/${robloxUser.id}/profile`, 
+          avatarUrl, 
+          detail: userDetail, 
+          groups 
+        };
+        const { embed, butonlar } = robloxProfilSayfasiOlustur(profilVeri, 0);
+        const mesaj = await interaction.editReply({ embeds: [embed], components: [butonlar] });
+        robloxProfilCache.set(mesaj.id, { veri: profilVeri, sayfa: 0 });
+        return;
       } catch (e) {
         console.error("Roblox profil sorgulama hatası:", e);
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox profil bilgisi alınırken bir hata oluştu.")] });
       }
     }
 
-    if (cmd === "rutbe-degistir" || cmd === "terfi" || cmd === "tenzil") {
-      await interaction.deferReply();
-
-      if (!config.ROBLOX_COOKIE) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `ROBLOX_COOKIE` ayarlanmamış, bu komut kullanılamaz.")] });
-      }
-      if (!robloxGirisYapildi) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bot şu anda Roblox'a giriş yapamamış durumda (cookie geçersiz veya süresi dolmuş olabilir). Konsol loglarını kontrol et veya /cookie-yenile ile güncelle.")] });
-      }
-      const groupId = config.GROUP_ID;
-      if (!groupId) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `GROUP_ID` ayarlanmamış.")] });
-      }
-
-      const robloxIsim = interaction.options.getString("roblox_isim");
-      const sebep = interaction.options.getString("sebep");
-
-      try {
-        const userId = await noblox.getIdFromUsername(robloxIsim);
-        if (!userId) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** adında bir Roblox kullanıcısı bulunamadı.`)] });
-        }
-
-        const eskiRutbeAdi = await noblox.getRankNameInGroup(groupId, userId);
-        const eskiRankNum = await noblox.getRankInGroup(groupId, userId);
-        const avatarUrl = await getRobloxAvatarUrl(userId);
-
-        const roller = (await getRobloxGroupRoles(groupId)).slice().sort((a, b) => a.rank - b.rank);
-
-        let hedefRol, baslik, renk;
-
-        if (cmd === "terfi" || cmd === "tenzil") {
-          const suankiIndex = roller.findIndex(r => r.rank === eskiRankNum);
-          const hedefIndex = suankiIndex + (cmd === "terfi" ? 1 : -1);
-
-          if (suankiIndex === -1 || hedefIndex < 0 || hedefIndex >= roller.length) {
-            const sinirMesaji = cmd === "terfi" ? "zaten en üst rütbede, daha fazla terfi ettirilemez." : "zaten en alt rütbede, daha fazla tenzil edilemez.";
-            return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** ${sinirMesaji}`)] });
-          }
-          hedefRol = roller[hedefIndex];
-          baslik = cmd === "terfi" ? "⬆️ Terfi Verildi" : "⬇️ Tenzil Yapıldı";
-          renk = cmd === "terfi" ? RENK.basari : RENK.hata;
-        } else {
-          const rutbeAdi = interaction.options.getString("rutbe");
-          hedefRol = roller.find(r => r.name.toLocaleLowerCase("tr-TR") === rutbeAdi.toLocaleLowerCase("tr-TR"));
-          if (!hedefRol) {
-            return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${rutbeAdi}** adında bir rütbe bulunamadı. Lütfen listeden bir seçenek seç.`)] });
-          }
-          baslik = "🔄 Rütbe Değiştirildi";
-          renk = RENK.ozel;
-        }
-
-        // Güvenlik Kontrolü 1: Botun kendi rütbesinden yüksek veya eşit rütbe atanamaz.
-        const botRank = await robloxBotRankiGetir(groupId);
-        if (botRank !== null && hedefRol.rank >= botRank) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-            `❌ **${hedefRol.name}** rütbesi, botun kendi rütbesinden (**${await noblox.getRankNameInGroup(groupId, robloxBotUserId) || botRank}**) yüksek veya eşit olduğu için atanamaz.\n` +
-            `Bu, botun/sahibin üstüne çıkarılmasını önlemek için bilerek engellendi.`
-          )] });
-        }
-
-        // Güvenlik Kontrolü 2: Kullanıcının kendi rütbesi, atayacağı rütbeden düşük olmalı.
-        const interactionUserRobloxId = data.robloxBaglantilari[interaction.user.id];
-        if ((cmd === "terfi" || cmd === "tenzil") && interactionUserRobloxId) {
-            const interactionUserCurrentRank = await noblox.getRankInGroup(groupId, interactionUserRobloxId);
-            if (hedefRol.rank > interactionUserCurrentRank) {
-              return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-                `❌ Kendi rütbenizden (${await noblox.getRankNameInGroup(groupId, interactionUserRobloxId)}) daha yüksek bir rütbe (${hedefRol.name}) atayamazsınız.`
-              )] });
-            }
-        } else if (cmd !== "rutbe-degistir" && !interactionUserRobloxId) {
-             return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox hesabınız Discord hesabınıza bağlı değil. Lütfen `/yenile` komutunu kullanarak bağlayın. Bu komut, rütbe atama yetkinizi kontrol etmek için gereklidir.")] });
-        }
-
-        await noblox.setRank(groupId, userId, hedefRol.rank);
-        const yeniRutbeAdi = hedefRol.name;
-
-        const embed = new EmbedBuilder()
-          .setColor(renk)
-          .setTitle(baslik)
-          .setThumbnail(avatarUrl)
-          .addFields(
-            { name: "👤 Roblox Kullanıcı", value: robloxIsim, inline: true },
-            { name: "📤 Eski Rütbe", value: eskiRutbeAdi || "Bilinmiyor", inline: true },
-            { name: "📥 Yeni Rütbe", value: yeniRutbeAdi || "Bilinmiyor", inline: true },
-            { name: "📝 Sebep", value: sebep, inline: false },
-            { name: "👮 İşlemi Yapan", value: `<@${interaction.user.id}>`, inline: false }
-          )
-          .setFooter({ text: "TSA - Turkish Special Army" })
-          .setTimestamp();
-
-        await sendLogMessage(interaction.guild, baslik, `${robloxIsim} kullanıcısının rütbesi değiştirildi: ${eskiRutbeAdi} → ${yeniRutbeAdi}`, renk, [
-          { name: "Roblox Kullanıcı", value: robloxIsim, inline: true },
-          { name: "Sebep", value: sebep, inline: true },
-          { name: "İşlemi Yapan", value: `<@${interaction.user.id}>`, inline: true }
-        ]);
-
-        return interaction.editReply({ embeds: [embed] });
-      } catch (e) {
-        console.error("Rütbe değiştirme hatası:", e);
-        const mesaj = e.message?.includes("permission") || e.message?.includes("Forbidden") || e.message?.includes("user is not in the group")
-          ? "❌ Botun bu işlemi yapacak yetkisi yok. Roblox grubunda botun hesabının, hedef kullanıcıdan daha yüksek bir rütbede olduğundan ve gerekli izinlere sahip olduğundan emin ol. Kullanıcı grupta olmayabilir."
-          : "❌ Rütbe değiştirilirken bir hata oluştu. Kullanıcı adını, rütbeyi ve diğer detayları kontrol edip tekrar dene.";
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(mesaj)] });
-      }
-    }
-
-    if (cmd === "dm-mesaj") {
-      await interaction.deferReply();
-      const target = interaction.options.getUser("kullanici");
-      const mesaj = interaction.options.getString("mesaj");
-      try {
-        await target.send(mesaj);
-        await sendLogMessage(interaction.guild, "DM Gönderildi", `${interaction.user.tag} tarafından ${target.tag} kullanıcısına DM gönderildi.`, RENK.ana, [
-          { name: "Gönderen", value: `<@${interaction.user.id}>`, inline: true },
-          { name: "Alıcı", value: `<@${target.id}>`, inline: true },
-          { name: "Mesaj", value: mesaj, inline: false }
-        ]);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`✅ **${target.tag}** kişisine özel mesaj başarıyla gönderildi.`)] });
-      } catch (e) {
-        console.error(e);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("DM gönderilemedi. Kullanıcının DMleri kapalı olabilir.")] });
-      }
-    }
-
-    if (cmd === "dm-duyuru") {
-      await interaction.deferReply({ ephemeral: true });
-      const hedefRol = interaction.options.getRole("hedef_rol");
-      const mesajIcerigi = interaction.options.getString("mesaj_icerigi");
-
-      const YETKILI_DM_DUYURU_ROL_ID = "1518357617280417993"; // Bu ID'yi kendi sunucunuzdaki yetkili rol ID'si ile değiştirin
-
-      if (!interaction.member.roles.cache.has(YETKILI_DM_DUYURU_ROL_ID) && !interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bu komutu kullanmak için yeterli yetkiniz yok! Sadece belirli bir role sahip olanlar bu komutu kullanabilir.")] });
-      }
-
-      const membersWithRole = hedefRol.members;
-      let sentCount = 0;
-      let failedCount = 0;
-
-      for (const [memberId, member] of membersWithRole) {
-        try {
-          const dmEmbed = new EmbedBuilder()
-            .setColor(RENK.ozel)
-            .setTitle("📢 Özel Duyuru")
-            .setDescription(mesajIcerigi)
-            .setTimestamp()
-            .setFooter({ text: `Duyuru Yapan: ${interaction.user.tag}` });
-
-          await member.send({ embeds: [dmEmbed] });
-          sentCount++;
-        } catch (e) {
-          console.error(`DM duyurusu gönderilemedi ${member.user.tag}:`, e.message);
-          failedCount++;
-        }
-      }
-
-      await sendLogMessage(interaction.guild, "DM Duyurusu Yapıldı", `${interaction.user.tag} tarafından ${hedefRol.name} rolündeki kullanıcılara DM duyurusu yapıldı.`, RENK.ozel, [
-        { name: "Hedef Rol", value: hedefRol.name, inline: true },
-        { name: "Gönderilen", value: sentCount.toString(), inline: true },
-        { name: "Başarısız", value: failedCount.toString(), inline: true },
-        { name: "Mesaj", value: mesajIcerigi.slice(0, 500), inline: false }
-      ]);
-
-      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`✅ **${hedefRol.name}** rolündeki **${sentCount}** kullanıcıya DM duyurusu başarıyla gönderildi. **${failedCount}** kullanıcıya gönderilemedi (DM'leri kapalı olabilir).`)] });
-    }
-
-    if (cmd === "yenile") {
-      await interaction.deferReply({ ephemeral: true });
-      const robloxUsername = interaction.options.getString("roblox_isim");
-
-      try {
-        const robloxUser = await getRobloxUserByUsername(robloxUsername);
-        if (!robloxUser) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxUsername}** adında bir Roblox kullanıcısı bulunamadı.`)] });
-        }
-
-        data.robloxBaglantilari[interaction.user.id] = robloxUser.id;
-        saveData();
-
-        return interaction.editReply({
-          embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(
-            `✅ Discord hesabınız başarıyla Roblox hesabınız **${robloxUser.name}** (${robloxUser.id}) ile bağlandı.`
-          )]
-        });
-      } catch (e) {
-        console.error("Roblox hesabı bağlama hatası:", e);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox hesabınızı bağlarken bir hata oluştu. Lütfen tekrar deneyin.")] });
-      }
-    }
-
-    if (cmd === "duyuru") {
-      await interaction.deferReply();
-      const mesaj = interaction.options.getString("mesaj");
-      const etiket = interaction.options.getString("etiket");
-
-      let content = "";
-      if (etiket === "everyone") {
-        content = "@everyone";
-      } else if (etiket === "here") {
-        content = "@here";
-      } else if (etiket === "military_role") {
-        if (config.ASKERI_PERSONEL_ROL) {
-          content = `<@&${config.ASKERI_PERSONEL_ROL}>`;
-        } else {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Askeri Personel rolü ayarlanmamış. Lütfen .env dosyasını kontrol edin.")] });
-        }
-      }
-
-      const embed = new EmbedBuilder()
-        .setColor(RENK.uyari)
-        .setTitle("📢 Genel Duyuru")
-        .setDescription(mesaj)
-        .setTimestamp()
-        .setFooter({ text: `Duyuru Yapan: ${interaction.user.tag}` });
-
-      await interaction.channel.send({ content: content, embeds: [embed] });
-      await sendLogMessage(interaction.guild, "Genel Duyuru Yapıldı", `Yeni bir genel duyuru yapıldı.`, RENK.uyari, [
-        { name: "Duyuru", value: mesaj, inline: false },
-        { name: "Etiket", value: etiket, inline: true },
-        { name: "Yayınlayan", value: `<@${interaction.user.id}>`, inline: true }
-      ]);
-      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription("✅ Duyuru başarıyla yapıldı.")] });
-    }
-
-    // ==================== MÜZİK KOMUTLARI ====================
-    if (cmd === "muzik-cal") {
-      await interaction.deferReply();
-      const vc = interaction.member.voice.channel;
-      if (!vc) return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Müzik çalmak için önce bir ses kanalında olmalısınız.")] });
-
-      const query = interaction.options.getString("sarki");
-      let streamInfo;
-      try {
-        const bulunan = await withTimeout(
-          ytdlpArama(query),
-          15000,
-          "Arama zaman aşımına uğradı (YouTube yanıt vermedi)."
-        );
-        if (!bulunan) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Şarkı bulunamadı.")] });
-        }
-
-        const akis = ytdlpAkisOlustur(bulunan.url);
-        streamInfo = { stream: akis, type: StreamType.Raw, title: bulunan.title, url: bulunan.url };
-      } catch (e) {
-        console.error("Müzik akışı alınırken hata:", e);
-        const zamanAsimiMi = e.message?.includes("zaman aşımına uğradı");
-        const aciklama = zamanAsimiMi
-          ? `⏱️ ${e.message}`
-          : "Müzik çalınırken bir hata oluştu. Farklı bir şarkı adı veya link ile tekrar dene.";
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(aciklama)] });
-      }
-
-      queue.push(streamInfo);
-
-      if (player.state.status !== AudioPlayerStatus.Playing) {
-        const conn = joinVoiceChannel({ channelId: vc.id, guildId: interaction.guild.id, adapterCreator: interaction.guild.voiceAdapterCreator });
-        currentSong = queue.shift();
-        const resource = createAudioResource(currentSong.stream, { inputType: currentSong.type });
-        player.play(resource);
-        conn.subscribe(player);
-        await sendLogMessage(interaction.guild, "Müzik Çalıyor", `Yeni müzik çalmaya başladı: ${currentSong.title}`, RENK.ana, [{ name: "URL", value: currentSong.url, inline: false }]);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`▶️ Şimdi çalıyor: **[${currentSong.title}](${currentSong.url})**`)] });
-      } else {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`✅ **[${streamInfo.title}](${streamInfo.url})** kuyruğa eklendi. (Sıra: ${queue.length})`)] });
-      }
-    }
-
-    if (cmd === "muzik-durdur") {
-      await interaction.deferReply();
-      const connection = getVoiceConnection(interaction.guild.id);
-      if (connection) {
-        connection.destroy();
-        queue = [];
-        currentSong = null;
-        await sendLogMessage(interaction.guild, "Müzik Durduruldu", `Müzik durduruldu ve kuyruk temizlendi.`, RENK.uyari, [{ name: "İsteyen", value: `<@${interaction.user.id}>`, inline: true }]);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.uyari).setDescription("⏹️ Müzik durduruldu ve kuyruk temizlendi.")] });
-      } else {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Zaten müzik çalmıyor veya bir ses kanalında değilim.")] });
-      }
-    }
-
-    if (cmd === "muzik-gec") {
-      await interaction.deferReply();
-      if (queue.length > 0) {
-        player.stop();
-        await sendLogMessage(interaction.guild, "Şarkı Geçildi", `Sıradaki şarkıya geçildi.`, RENK.ana, [{ name: "İsteyen", value: `<@${interaction.user.id}>`, inline: true }]);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.ana).setDescription("⏭️ Sıradaki şarkıya geçiliyor.")] });
-      } else {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Kuyrukta başka şarkı bulunmuyor.")] });
-      }
-    }
-
-    if (cmd === "muzik-kuyruk") {
-      await interaction.deferReply();
-      if (queue.length === 0 && !currentSong) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.ana).setDescription("Müzik kuyruğu boş.")] });
-      }
-
-      let description = currentSong ? `**Şu An Çalan:** [${currentSong.title}](${currentSong.url})\n\n` : "";
-      if (queue.length > 0) {
-        description += "**Sıradaki Şarkılar:**\n" + queue.map((song, index) => `**${index + 1}.** [${song.title}](${song.url})`).join("\n");
-      } else if (!currentSong) {
-        description = "Müzik kuyruğu boş.";
-      }
-
-      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.ozel).setTitle("🎶 Müzik Kuyruğu").setDescription(description.length > 1950 ? description.slice(0, 1947) + "..." : description)] });
-    }
-
-    if (cmd === "muzik-simdiki") {
-      await interaction.deferReply();
-      if (currentSong) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`▶️ Şu an çalıyor: **[${currentSong.title}](${currentSong.url})**`)] });
-      } else {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Şu an hiçbir şarkı çalmıyor.")] });
-      }
-    }
-
-    // ==================== DİĞER KOMUTLAR ====================
     if (cmd === "rutbeler") {
       await interaction.deferReply();
 
@@ -2618,30 +1703,221 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    if (cmd === "liderlik") {
-      const siralama = Object.entries(data.aktiflik || {})
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
+    // ==================== ROBLOX RÜTBE YÖNETİMİ (TERFİ/TENZİL/DEĞİŞTİR) ====================
+    if (cmd === "rutbe-degistir" || cmd === "terfi" || cmd === "tenzil") {
+      await interaction.deferReply();
 
-      if (siralama.length === 0) {
-        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.altin).setTitle("👑 En Aktif Üyeler").setDescription("Henüz hiç aktiflik verisi toplanmadı.")] });
+      if (!config.ROBLOX_COOKIE) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `ROBLOX_COOKIE` ayarlanmamış, bu komut kullanılamaz.")] });
+      }
+      if (!robloxGirisYapildi) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bot şu anda Roblox'a giriş yapamamış durumda (cookie geçersiz veya süresi dolmuş olabilir). Konsol loglarını kontrol et veya /cookie-yenile ile güncelle.")] });
+      }
+      const groupId = config.GROUP_ID;
+      if (!groupId) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `GROUP_ID` ayarlanmamış.")] });
       }
 
-      const madalyalar = ["🥇", "🥈", "🥉"];
-      const satirlar = siralama.map(([userId, sayi], i) => {
-        const sira = madalyalar[i] || `**${i + 1}.**`;
-        return `${sira} <@${userId}> — **${sayi}** mesaj`;
-      });
+      const robloxIsim = interaction.options.getString("roblox_isim");
+      const sebep = interaction.options.getString("sebep");
 
-      const embed = new EmbedBuilder()
-        .setColor(RENK.altin)
-        .setTitle("👑 En Aktif Üyeler")
-        .setDescription(satirlar.join("\n"))
-        .setFooter({ text: "TSA Discord Bot — Sunucudaki toplam mesaj sayısına göre sıralanmıştır" })
-        .setTimestamp();
-      return interaction.reply({ embeds: [embed] });
+      try {
+        const userId = await noblox.getIdFromUsername(robloxIsim);
+        if (!userId) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** adında bir Roblox kullanıcısı bulunamadı.`)] });
+        }
+
+        // ========================================
+        // YENİ: YETKİLİ KULLANICI KONTROLÜ BAŞLANGIÇ
+        // ========================================
+        const interactionUserRobloxId = data.robloxBaglantilari[interaction.user.id];
+        if (!interactionUserRobloxId) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+            "❌ Önce `/yenile` komutu ile **Discord hesabınızı Roblox hesabınıza bağlamanız** gerekiyor.\n\n" +
+            "Rütbe değiştirme yetkinizi doğrulayabilmem için bu zorunludur."
+          )] });
+        }
+
+        const interactionUserCurrentRank = await noblox.getRankInGroup(groupId, interactionUserRobloxId);
+        if (interactionUserCurrentRank <= 0) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Siz bu Roblox grubunda üye değilsiniz veya rütbeniz bulunamadı.")] });
+        }
+        const interactionUserRankName = await noblox.getRankNameInGroup(groupId, interactionUserRobloxId);
+        // ========================================
+        // YETKİLİ KULLANICI KONTROLÜ SONU
+        // ========================================
+
+        const eskiRutbeAdi = await noblox.getRankNameInGroup(groupId, userId);
+        const eskiRankNum = await noblox.getRankInGroup(groupId, userId);
+        const avatarUrl = await getRobloxAvatarUrl(userId);
+
+        const roller = (await getRobloxGroupRoles(groupId)).slice().sort((a, b) => a.rank - b.rank);
+
+        let hedefRol, baslik, renk;
+
+        if (cmd === "terfi" || cmd === "tenzil") {
+          const suankiIndex = roller.findIndex(r => r.rank === eskiRankNum);
+          const hedefIndex = suankiIndex + (cmd === "terfi" ? 1 : -1);
+
+          if (suankiIndex === -1 || hedefIndex < 0 || hedefIndex >= roller.length) {
+            const sinirMesaji = cmd === "terfi" ? "zaten en üst rütbede, daha fazla terfi ettirilemez." : "zaten en alt rütbede, daha fazla tenzil edilemez.";
+            return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** ${sinirMesaji}`)] });
+          }
+          hedefRol = roller[hedefIndex];
+          baslik = cmd === "terfi" ? "⬆️ Terfi Verildi" : "⬇️ Tenzil Yapıldı";
+          renk = cmd === "terfi" ? RENK.basari : RENK.hata;
+        } else {
+          const rutbeAdi = interaction.options.getString("rutbe");
+          hedefRol = roller.find(r => r.name.toLocaleLowerCase("tr-TR") === rutbeAdi.toLocaleLowerCase("tr-TR"));
+          if (!hedefRol) {
+            return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${rutbeAdi}** adında bir rütbe bulunamadı. Lütfen listeden bir seçenek seç.`)] });
+          }
+          baslik = "🔄 Rütbe Değiştirildi";
+          renk = RENK.ozel;
+        }
+
+        // Güvenlik Kontrolü 1: Botun kendi rütbesinden yüksek veya eşit rütbe atanamaz.
+        const botRank = await robloxBotRankiGetir(groupId);
+        if (botRank !== null && hedefRol.rank >= botRank) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+            `❌ **${hedefRol.name}** rütbesi, botun kendi rütbesinden (**${await noblox.getRankNameInGroup(groupId, robloxBotUserId) || botRank}**) yüksek veya eşit olduğu için atanamaz.\n` +
+            `Bu, botun/sahibin üstüne çıkarılmasını önlemek için bilerek engellendi.`
+          )] });
+        }
+
+        // Güvenlik Kontrolü 2: KULLANICI KENDİ RÜTBESİNDEN YÜKSEK VEYA EŞİT ATAYAMAZ (Tüm komutlar için)
+        if (hedefRol.rank >= interactionUserCurrentRank) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+            `❌ **${hedefRol.name}** rütbesi, sizin kendi rütbenizden (**${interactionUserRankName} — Rank ${interactionUserCurrentRank}**) yüksek veya eşit olduğu için atanamaz.\n` +
+            `Kendi rütbenizin altındaki rütbeleri atayabilirsiniz.`
+          )] });
+        }
+
+        // Güvenlik Kontrolü 3: Hedef zaten aynı rütbede mi?
+        if (eskiRankNum === hedefRol.rank) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.uyari).setDescription(`❌ **${robloxIsim}** zaten **${hedefRol.name}** rütbesinde. Değişiklik yapılmadı.`)] });
+        }
+
+        await noblox.setRank(groupId, userId, hedefRol.rank);
+        const yeniRutbeAdi = hedefRol.name;
+
+        const embed = new EmbedBuilder()
+          .setColor(renk)
+          .setTitle(baslik)
+          .setThumbnail(avatarUrl)
+          .addFields(
+            { name: "👤 Roblox Kullanıcı", value: robloxIsim, inline: true },
+            { name: "📤 Eski Rütbe", value: eskiRutbeAdi || "Bilinmiyor", inline: true },
+            { name: "📥 Yeni Rütbe", value: yeniRutbeAdi || "Bilinmiyor", inline: true },
+            { name: "📝 Sebep", value: sebep, inline: false },
+            { name: "👮 İşlemi Yapan", value: `<@${interaction.user.id}> (${interactionUserRankName})`, inline: false }
+          )
+          .setFooter({ text: "TSA - Turkish Special Army" })
+          .setTimestamp();
+
+        await sendLogMessage(interaction.guild, baslik, `${robloxIsim} kullanıcısının rütbesi değiştirildi: ${eskiRutbeAdi} → ${yeniRutbeAdi}`, renk, [
+          { name: "Roblox Kullanıcı", value: robloxIsim, inline: true },
+          { name: "Sebep", value: sebep, inline: true },
+          { name: "İşlemi Yapan", value: `<@${interaction.user.id}>`, inline: true }
+        ]);
+
+        return interaction.editReply({ embeds: [embed] });
+      } catch (e) {
+        console.error("Rütbe değiştirme hatası:", e);
+        const mesaj = e.message?.includes("permission") || e.message?.includes("Forbidden") || e.message?.includes("user is not in the group")
+          ? "❌ Botun bu işlemi yapacak yetkisi yok. Roblox grubunda botun hesabının, hedef kullanıcıdan daha yüksek bir rütbede olduğundan ve gerekli izinlere sahip olduğundan emin ol. Kullanıcı grupta olmayabilir."
+          : "❌ Rütbe değiştirilirken bir hata oluştu. Kullanıcı adını, rütbeyi ve diğer detayları kontrol edip tekrar dene.";
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(mesaj)] });
+      }
     }
 
+    // ==================== ROBLOX COOKIE YÖNETİMİ ====================
+    if (cmd === "cookie-durum") {
+      await interaction.deferReply({ ephemeral: true });
+      let durumMesaji;
+      if (!config.ROBLOX_COOKIE) {
+        durumMesaji = "ℹ️ ROBLOX_COOKIE `.env` dosyasında ayarlanmamış. Rütbe komutları çalışmayacaktır.";
+      } else if (!robloxGirisYapildi) {
+        durumMesaji = "❌ Roblox cookie'si geçerli değil veya süresi dolmuş. Lütfen `/cookie-yenile` komutu ile güncelleyin.";
+      } else {
+        const gecenSureMs = Date.now() - robloxCookieSonGecerlilik;
+        const gecenSaniye = Math.floor(gecenSureMs / 1000);
+        const gecenDakika = Math.floor(gecenSaniye / 60);
+        const gecenSaat = Math.floor(gecenDakika / 60);
+        const zamanGostergesi = gecenSaat > 0 ? `${gecenSaat} saat ` : (gecenDakika > 0 ? `${gecenDakika} dakika ` : `${gecenSaniye} saniye `);
+        durumMesaji = `✅ Roblox cookie'si geçerli görünüyor. Son başarılı giriş: Yaklaşık ${zamanGostergesi}önce.\n` +
+                     `Bot, **${robloxBotAdi || 'Bilinmiyor'}** (${robloxBotUserId || 'Bilinmiyor'}) kullanıcı adıyla bağlı.`;
+      }
+      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(robloxGirisYapildi ? RENK.basari : (config.ROBLOX_COOKIE ? RENK.hata : RENK.ana)).setDescription(durumMesaji)] });
+    }
+
+    if (cmd === "cookie-yenile") {
+      await interaction.deferReply({ ephemeral: true });
+      const yeniCookie = interaction.options.getString("yeni_cookie");
+      console.log("Yeni cookie ile giriş deneniyor...");
+      const girisSonucu = await robloxGirisYap(yeniCookie);
+
+      if (girisSonucu) {
+        config.ROBLOX_COOKIE = yeniCookie;
+        await interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(
+          `✅ Yeni Roblox cookie'si ile giriş denemesi yapıldı.\n` +
+          `Bot, **${girisSonucu.UserName || girisSonucu.name}** (${girisSonucu.UserID || girisSonucu.id}) olarak bağlandı.\n\n` +
+          `**ÖNEMLİ:** Render'da .env kalıcı olarak güncellenmez. Bot yeniden başlatılırsa eski cookie geçerli olur.`
+        )] });
+      } else {
+        await interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+          "❌ Yeni Roblox cookie'si ile giriş yapılamadı. Lütfen cookie'nin geçerli olduğundan ve doğru formatta olduğundan emin olun. Hata detayları için konsolu kontrol edin."
+        )] });
+      }
+      return;
+    }
+
+    // ==================== ROBLOX BAĞLANTI (YENİLE) ====================
+    if (cmd === "yenile") {
+      await interaction.deferReply({ ephemeral: true });
+      const robloxUsername = interaction.options.getString("roblox_isim");
+
+      try {
+        const mevcutBaglanti = data.robloxBaglantilari[interaction.user.id];
+        
+        const robloxUser = await getRobloxUserByUsername(robloxUsername);
+        if (!robloxUser) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxUsername}** adında bir Roblox kullanıcısı bulunamadı.`)] });
+        }
+
+        const baskasiKullaniyor = Object.entries(data.robloxBaglantilari).find(([discordId, robloxId]) => discordId !== interaction.user.id && robloxId === robloxUser.id);
+        if (baskasiKullaniyor) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+            `❌ Bu Roblox hesabı (**${robloxUser.name}**) başka bir Discord kullanıcısı tarafından zaten bağlanmış.`
+          )] });
+        }
+
+        data.robloxBaglantilari[interaction.user.id] = robloxUser.id;
+        saveData();
+
+        if (mevcutBaglanti && mevcutBaglanti !== robloxUser.id) {
+          return interaction.editReply({
+            embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(
+              `✅ Discord hesabınızın Roblox bağlantısı güncellendi.\n\n` +
+              `**Eski:** Roblox ID \`${mevcutBaglanti}\`\n` +
+              `**Yeni:** **${robloxUser.name}** (${robloxUser.id})`
+            )]
+          });
+        }
+
+        return interaction.editReply({
+          embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(
+            `✅ Discord hesabınız başarıyla Roblox hesabınız **${robloxUser.name}** (${robloxUser.id}) ile bağlandı.\n\n` +
+            `Artık rütbe komutlarını kullanabilirsiniz.`
+          )]
+        });
+      } catch (e) {
+        console.error("Roblox hesabı bağlama hatası:", e);
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox hesabınızı bağlarken bir hata oluştu. Lütfen tekrar deneyin.")] });
+      }
+    }
+
+    // ==================== BİLGİ KOMUTLARI ====================
     if (cmd === "sunucu-bilgi") {
       await interaction.deferReply();
       const guild = interaction.guild;
@@ -2713,52 +1989,67 @@ client.on("interactionCreate", async interaction => {
       return interaction.editReply({ embeds: [embed] });
     }
 
-    // ==================== ROBLOX COOKIE YÖNETİM KOMUTLARI ====================
-    if (cmd === "cookie-durum") {
-      await interaction.deferReply({ ephemeral: true });
+    if (cmd === "liderlik") {
+      const siralama = Object.entries(data.aktiflik || {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
 
-      let durumMesaji;
-      if (!config.ROBLOX_COOKIE) {
-        durumMesaji = "ℹ️ ROBLOX_COOKIE `.env` dosyasında ayarlanmamış. Rütbe komutları çalışmayacaktır.";
-      } else if (!robloxGirisYapildi) {
-        durumMesaji = "❌ Roblox cookie'si geçerli değil veya süresi dolmuş. Lütfen `/cookie-yenile` komutu ile güncelleyin.";
-      } else {
-        const gecenSureMs = Date.now() - robloxCookieSonGecerlilik;
-        const gecenSaniye = Math.floor(gecenSureMs / 1000);
-        const gecenDakika = Math.floor(gecenSaniye / 60);
-        const gecenSaat = Math.floor(gecenDakika / 60);
-        const zamanGostergesi = gecenSaat > 0 ? `${gecenSaat} saat ` : (gecenDakika > 0 ? `${gecenDakika} dakika ` : `${gecenSaniye} saniye `);
-        durumMesaji = `✅ Roblox cookie'si geçerli görünüyor. Son başarılı giriş: Yaklaşık ${zamanGostergesi}önce.\n` +
-                     `Bot, **${robloxBotAdi || 'Bilinmiyor'}** (${robloxBotUserId || 'Bilinmiyor'}) kullanıcı adıyla bağlı.`;
+      if (siralama.length === 0) {
+        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.altin).setTitle("👑 En Aktif Üyeler").setDescription("Henüz hiç aktiflik verisi toplanmadı.")] });
       }
-      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(robloxGirisYapildi ? RENK.basari : (config.ROBLOX_COOKIE ? RENK.hata : RENK.ana)).setDescription(durumMesaji)] });
+
+      const madalyalar = ["🥇", "🥈", "🥉"];
+      const satirlar = siralama.map(([userId, sayi], i) => {
+        const sira = madalyalar[i] || `**${i + 1}.**`;
+        return `${sira} <@${userId}> — **${sayi}** mesaj`;
+      });
+
+      const embed = new EmbedBuilder()
+        .setColor(RENK.altin)
+        .setTitle("👑 En Aktif Üyeler")
+        .setDescription(satirlar.join("\n"))
+        .setFooter({ text: "TSA Discord Bot — Sunucudaki toplam mesaj sayısına göre sıralanmıştır" })
+        .setTimestamp();
+      return interaction.reply({ embeds: [embed] });
     }
 
-    if (cmd === "cookie-yenile") {
-      await interaction.deferReply({ ephemeral: true });
-      const yeniCookie = interaction.options.getString("yeni_cookie");
-      console.log("Yeni cookie ile giriş deneniyor...");
-      const girisSonucu = await robloxGirisYap(yeniCookie);
-
-      if (girisSonucu) {
-        await interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(
-          `✅ Yeni Roblox cookie'si ile giriş denemesi yapıldı.\n` +
-          `Bot, **${girisSonucu.name}** (${girisSonucu.id}) olarak bağlandı.\n\n` +
-          `**ÖNEMLİ:** Değişikliklerin tam olarak etkili olması için **BOTU YENİDEN BAŞLATMANIZ GEREKMEKTEDİR.**`
-        )] });
-      } else {
-        await interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          "❌ Yeni Roblox cookie'si ile giriş yapılamadı. Lütfen cookie'nin geçerli olduğundan ve doğru formatta olduğundan emin olun. Hata detayları için konsolu kontrol edin."
-        )] });
+    // ==================== AKTİFLİK DENETLEME ====================
+    if (cmd === "aktiflik-denetleme") {
+      await interaction.deferReply();
+      const rol = interaction.options.getRole("rol");
+      const uyeler = rol.members;
+      if (uyeler.size === 0) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.uyari).setDescription(`**${rol.name}** rolünde hiç üye bulunmuyor.`)] });
       }
+      
+      let aktif = 0, inaktif = 0;
+      const liste = [];
+      for (const [id, member] of uyeler) {
+        const mesajSayisi = data.aktiflik[id] || 0;
+        if (mesajSayisi > 0) aktif++; else inaktif++;
+        liste.push(`<@${id}>: **${mesajSayisi}** mesaj`);
+      }
+      
+      const embed = new EmbedBuilder()
+        .setColor(RENK.ana)
+        .setTitle(`📊 Aktiflik Denetleme: ${rol.name}`)
+        .setDescription(`**Aktif:** ${aktif} | **İnaktif:** ${inaktif}`)
+        .addFields({ name: "Üyeler", value: liste.join("\n").slice(0, 1000) || "Liste boş.", inline: false })
+        .setFooter({ text: "TSA Discord Bot" })
+        .setTimestamp();
+      return interaction.editReply({ embeds: [embed] });
     }
+
+    // ==================== BİLİNMEYEN KOMUT ====================
+    return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bu komutun işleyicisi bulunamadı.")], ephemeral: true });
 
   } catch (error) {
-    console.error(error);
+    console.error("interactionCreate hatası:", error);
+    const hataEmbed = new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Komut çalıştırılırken beklenmedik bir hata oluştu.");
     if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Komut çalıştırılırken bir hata oluştu.")] });
+      await interaction.editReply({ embeds: [hataEmbed] }).catch(() => {});
     } else {
-      await interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Komut çalıştırılırken bir hata oluştu.")], ephemeral: true });
+      await interaction.reply({ embeds: [hataEmbed], ephemeral: true }).catch(() => {});
     }
   }
 });
