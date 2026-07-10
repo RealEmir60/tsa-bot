@@ -142,20 +142,6 @@ let robloxBotUserId = null;
 let robloxBotAdi = null;
 let robloxCookieSonGecerlilik = null;
 
-// .ROBLOSECURITY cookie'sinin tam formatı:
-// _|WARNING:-DO-NOT-SHARE-THIS.--Sharing-this-will-allow-someone-to-log-into-your-account-and-steal-your-ROBUX-and-items.|_<ASIL_DEGER>
-const ROBLOX_WARNING_PREFIX = "_|WARNING:-DO-NOT-SHARE-THIS.--Sharing-this-will-allow-someone-to-log-into-your-account-and-steal-your-ROBUX-and-items.|_";
-
-function cookieTemizle(cookie) {
-  let c = cookie.trim().replace(/^["']|["']$/g, ""); // Baştaki/sondaki tırnak işaretlerini kaldır
-  if (!c.startsWith("_|WARNING:")) {
-    // Kullanıcı sadece asıl değeri yapıştırmış, prefix'i otomatik ekle
-    console.log("ℹ️ Cookie'ye WARNING prefix otomatik ekleniyor...");
-    c = ROBLOX_WARNING_PREFIX + c;
-  }
-  return c;
-}
-
 async function robloxGirisYap(cookie) {
   if (!cookie) {
     console.log("ℹ️ ROBLOX_COOKIE ayarlanmamış. Rütbe komutları çalışmayacak.");
@@ -172,13 +158,6 @@ async function robloxGirisYap(cookie) {
     return currentUser;
   } catch (e) {
     console.error("❌ ROBLOX_COOKIE ile giriş yapılamadı:", e.message);
-    if (e.message?.includes("not logged in") || e.message?.includes("warning text") || e.message?.includes("cookie")) {
-      console.error("   → Cookie değeri geçersiz. Tarayıcından Roblox'a giriş yap, F12 → Application → Cookies → .ROBLOSECURITY değerinin TAMAMINI kopyala.");
-    } else if (e.message?.toLowerCase().includes("token") || e.message?.includes("401") || e.message?.includes("403")) {
-      console.error("   → Cookie süresi dolmuş. Yeni .ROBLOSECURITY cookie'si alıp /cookie-yenile kullan.");
-    } else if (e.message?.includes("ECONNREFUSED") || e.message?.includes("ETIMEDOUT")) {
-      console.error("   → Roblox'a bağlanılamadı. İnternet bağlantını veya firewall'ı kontrol et.");
-    }
     robloxGirisYapildi = false;
     robloxBotUserId = null;
     robloxBotAdi = null;
@@ -190,10 +169,6 @@ async function robloxGirisYap(cookie) {
 async function robloxBotRankiGetir(groupId) {
   if (!robloxGirisYapildi) return null;
   try {
-    if (roblox.isProxyMode) {
-      const result = await roblox.getBotRank(groupId);
-      return result?.rank ?? null;
-    }
     return await roblox.getRankInGroup(groupId, robloxBotUserId);
   } catch (e) {
     console.error("Bot rütbesi alınırken hata:", e);
@@ -201,62 +176,35 @@ async function robloxBotRankiGetir(groupId) {
   }
 }
 
-// Başlangıç: proxy modunda durum sorgula + yeniden deneme döngüsü
-if (roblox.isProxyMode) {
-  async function proxyBaslangicKontrol(deneme = 1) {
-    try {
-      // Önce mevcut durumu sorgula
-      const status = await roblox.checkStatus();
-      if (status.isLoggedIn) {
-        robloxGirisYapildi = true;
-        robloxBotUserId = status.botUserId;
-        robloxBotAdi = status.botUserName;
-        robloxCookieSonGecerlilik = Date.now();
-        console.log(`✅ Roblox proxy: "${robloxBotAdi}" (${robloxBotUserId}) hesabına bağlandı. Rütbe komutları aktif.`);
-        return;
-      }
-      // Giriş yapılmamışsa relogin isteği gönder
-      console.log(`⚠️ Roblox proxy: Henüz giriş yapılmamış, yeniden giriş deneniyor... (deneme #${deneme})`);
-      const reloginData = await roblox.relogin();
-      if (reloginData.success) {
-        robloxGirisYapildi = true;
-        robloxBotUserId = reloginData.botUserId;
-        robloxBotAdi = reloginData.botUserName;
-        robloxCookieSonGecerlilik = Date.now();
-        console.log(`✅ Roblox proxy: "${robloxBotAdi}" (${robloxBotUserId}) hesabına bağlandı. Rütbe komutları aktif.`);
-        return;
-      }
-    } catch (e) {
-      console.error(`❌ Roblox proxy bağlantı hatası (deneme #${deneme}): ${e.message}`);
-    }
-    // Başarısız — yeniden dene
-    const bekle = deneme <= 2 ? 2 : deneme <= 4 ? 5 : 15; // dk
-    console.log(`🔄 Roblox proxy: ${bekle} dakika sonra tekrar denenecek...`);
-    setTimeout(() => proxyBaslangicKontrol(deneme + 1), bekle * 60_000);
-  }
-  proxyBaslangicKontrol();
-
-  // Periyodik oturum kontrolü (her 10 dakikada bir)
-  setInterval(async () => {
-    try {
-      const status = await roblox.checkStatus();
-      if (status.isLoggedIn !== robloxGirisYapildi) {
-        robloxGirisYapildi = status.isLoggedIn;
-        robloxBotUserId = status.botUserId;
-        robloxBotAdi = status.botUserName;
-        if (status.isLoggedIn) {
-          console.log(`✅ Roblox proxy oturumu yenilendi: "${robloxBotAdi}"`);
-        } else {
-          console.log("⚠️ Roblox proxy: Oturum kapandı, yeniden deneme başlatıldı.");
-          proxyBaslangicKontrol(1);
-        }
-      }
-    } catch { /* sessiz geç */ }
-  }, 10 * 60_000);
-
-} else if (config.ROBLOX_COOKIE) {
+// Başlangıçta cookie varsa hemen giriş dene, yoksa uyar.
+if (config.ROBLOX_COOKIE) {
   robloxGirisYap(config.ROBLOX_COOKIE);
+} else {
+  console.log("ℹ️ ROBLOX_COOKIE ayarlanmamış. Rütbe komutları çalışmayacak.");
 }
+
+// Cookie zamanla geçersiz olabileceği için periyodik olarak (30 dk'da bir)
+// oturumu doğrula; geçersizse otomatik yeniden giriş dene.
+setInterval(async () => {
+  if (!config.ROBLOX_COOKIE) return;
+  try {
+    await roblox.directLogin(config.ROBLOX_COOKIE);
+    if (!robloxGirisYapildi) {
+      robloxGirisYapildi = true;
+      robloxBotUserId = roblox.botUserId;
+      robloxBotAdi = roblox.botUserName;
+      robloxCookieSonGecerlilik = Date.now();
+      console.log(`✅ Roblox oturumu yeniden doğrulandı: "${robloxBotAdi}"`);
+    } else {
+      robloxCookieSonGecerlilik = Date.now();
+    }
+  } catch (e) {
+    if (robloxGirisYapildi) {
+      console.error("⚠️ Roblox oturumu artık geçersiz:", e.message);
+    }
+    robloxGirisYapildi = false;
+  }
+}, 30 * 60_000);
 
 const EGITIM_ROL_ID = "1518397406578741348";
 const EGITIM_KANAL_ID = "1518357904779116554";
@@ -687,9 +635,9 @@ client.once("ready", async () => {
     console.error("❌ Slash komutları yüklenirken hata oluştu:", error);
   }
 
-  if (!config.ROBLOX_COOKIE && !roblox.isProxyMode) {
+  if (!config.ROBLOX_COOKIE) {
       console.log("ℹ️ ROBLOX_COOKIE ayarlanmamış. Rütbe komutları çalışmayacaktır.");
-  } else if (!robloxGirisYapildi && !roblox.isProxyMode) {
+  } else if (!robloxGirisYapildi) {
       console.log("⚠️ ROBLOX_COOKIE ile otomatik giriş yapılamadı. Lütfen console loglarını kontrol edin veya /cookie-yenile komutunu kullanın.");
   }
 });
@@ -1972,8 +1920,8 @@ client.on("interactionCreate", async interaction => {
     if (cmd === "rutbe-degistir" || cmd === "terfi" || cmd === "tenzil") {
       await interaction.deferReply();
 
-      if (!config.ROBLOX_COOKIE && !roblox.isProxyMode) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `ROBLOX_COOKIE` ayarlanmamış ve proxy modu aktif değil. Bu komut kullanılamaz.")] });
+      if (!config.ROBLOX_COOKIE) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `ROBLOX_COOKIE` ayarlanmamış. Bu komut kullanılamaz.")] });
       }
       if (!robloxGirisYapildi) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bot şu anda Roblox'a giriş yapamamış durumda (cookie geçersiz veya süresi dolmuş olabilir). Konsol loglarını kontrol et veya /cookie-yenile ile güncelle.")] });
@@ -1993,7 +1941,7 @@ client.on("interactionCreate", async interaction => {
         }
 
         // ========================================
-        // YENİ: YETKİLİ KULLANICI KONTROLÜ BAŞLANGIÇ
+        // YETKİLİ KULLANICI KONTROLÜ BAŞLANGIÇ
         // ========================================
         const interactionUserRobloxId = data.robloxBaglantilari[interaction.user.id];
         if (!interactionUserRobloxId) {
@@ -2108,19 +2056,14 @@ client.on("interactionCreate", async interaction => {
       await interaction.deferReply({ ephemeral: true });
       let durumMesaji;
       if (!robloxGirisYapildi) {
-        if (roblox.isProxyMode) {
-          durumMesaji = "❌ Roblox proxy: Bot giriş yapmamış. Replit'teki API sunucusunda ROBLOX_COOKIE'yi kontrol et.";
-        } else {
-          durumMesaji = "❌ Roblox cookie'si geçerli değil veya süresi dolmuş. Lütfen `/cookie-yenile` komutu ile güncelleyin.";
-        }
+        durumMesaji = "❌ Roblox cookie'si geçerli değil veya süresi dolmuş. Lütfen `/cookie-yenile` komutu ile güncelleyin.";
       } else {
         const gecenSureMs = Date.now() - robloxCookieSonGecerlilik;
         const gecenSaniye = Math.floor(gecenSureMs / 1000);
         const gecenDakika = Math.floor(gecenSaniye / 60);
         const gecenSaat = Math.floor(gecenDakika / 60);
         const zamanGostergesi = gecenSaat > 0 ? `${gecenSaat} saat ` : (gecenDakika > 0 ? `${gecenDakika} dakika ` : `${gecenSaniye} saniye `);
-        const modBilgisi = roblox.isProxyMode ? " (Replit proxy üzerinden)" : "";
-        durumMesaji = `✅ Roblox bağlantısı aktif${modBilgisi}. Son başarılı giriş: Yaklaşık ${zamanGostergesi}önce.\n` +
+        durumMesaji = `✅ Roblox bağlantısı aktif. Son başarılı doğrulama: Yaklaşık ${zamanGostergesi}önce.\n` +
                      `Bot, **${robloxBotAdi || 'Bilinmiyor'}** (${robloxBotUserId || 'Bilinmiyor'}) kullanıcı adıyla bağlı.`;
       }
       return interaction.editReply({ embeds: [new EmbedBuilder().setColor(robloxGirisYapildi ? RENK.basari : RENK.hata).setDescription(durumMesaji)] });
@@ -2131,33 +2074,15 @@ client.on("interactionCreate", async interaction => {
       const yeniCookie = interaction.options.getString("yeni_cookie");
       console.log("Yeni cookie ile giriş deneniyor...");
 
-      let girisSonucu;
-      try {
-        if (roblox.isProxyMode) {
-          // Proxy modunda: yeni cookie'yi Replit proxy'sine gönder
-          girisSonucu = await roblox.updateCookieOnProxy(yeniCookie);
-          robloxGirisYapildi = roblox.isLoggedIn;
-          robloxBotUserId = roblox.botUserId;
-          robloxBotAdi = roblox.botUserName;
-          robloxCookieSonGecerlilik = Date.now();
-        } else {
-          girisSonucu = await robloxGirisYap(yeniCookie);
-        }
-      } catch (e) {
-        console.error("Cookie yenileme hatası:", e.message);
-        girisSonucu = null;
-      }
+      const girisSonucu = await robloxGirisYap(yeniCookie);
 
       if (girisSonucu) {
         const kullaniciAdi = girisSonucu.UserName || girisSonucu.name || robloxBotAdi;
         const kullaniciId = girisSonucu.UserID || girisSonucu.id || robloxBotUserId;
-        const notMesaji = roblox.isProxyMode
-          ? "Replit'teki ROBLOX_COOKIE ortam değişkenini de güncellemeyi unutma, aksi hâlde yeniden başlatmada eski cookie kullanılır."
-          : "**ÖNEMLİ:** Render'daki ortam değişkenini de güncelle, aksi hâlde yeniden başlatmada eski cookie geçerli olur.";
         await interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(
           `✅ Yeni Roblox cookie'si ile giriş yapıldı.\n` +
           `Bot, **${kullaniciAdi}** (${kullaniciId}) olarak bağlandı.\n\n` +
-          `⚠️ ${notMesaji}`
+          `⚠️ **ÖNEMLİ:** Render'daki \`ROBLOX_COOKIE\` ortam değişkenini de güncelle, aksi hâlde yeniden başlatmada eski cookie geçerli olur.`
         )] });
       } else {
         await interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
@@ -2367,11 +2292,4 @@ process.on("uncaughtException", (error) => {
   process.exit(1);
 });
 
-// Replit'te sadece API proxy çalışır — Discord botu yalnızca Render'da başlar.
-// Render otomatik olarak RENDER=true env var'ını set eder.
-if (!process.env.RENDER) {
-  console.log("ℹ️ Bu ortam Render değil (RENDER env var yok). Discord botu başlatılmıyor.");
-  console.log("ℹ️ Roblox API proxy ayrı workflow'da çalışıyor. Express ayakta (UptimeRobot için).");
-} else {
-  client.login(config.TOKEN);
-}
+client.login(config.TOKEN);
