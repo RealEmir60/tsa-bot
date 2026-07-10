@@ -2560,4 +2560,3 @@ process.on("uncaughtException", (error) => {
 });
 
 client.login(config.TOKEN);
-
