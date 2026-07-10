@@ -656,15 +656,17 @@ const commands = [
   // ==================== BRANŞ KOMUTLARI ====================
   new SlashCommandBuilder()
     .setName("branş-istek-kabul-et")
-    .setDescription("Kullanıcının branş isteğini kabul eder ve branş rolünü verir.")
-    .addUserOption(o => o.setName("kullanici").setDescription("Branşa kabul edilecek kullanıcı").setRequired(true))
-    .addRoleOption(o => o.setName("brans_rolu").setDescription("Verilecek branş rolü").setRequired(true))
+    .setDescription("Branş isteğini kabul eder: Discord rolü verir ve Roblox grubuna en alt rütbeden alır.")
+    .addUserOption(o => o.setName("kullanici").setDescription("Branşa kabul edilecek Discord kullanıcısı").setRequired(true))
+    .addStringOption(o => o.setName("roblox_isim").setDescription("Kabul edilecek kişinin Roblox kullanıcı adı").setRequired(true))
+    .addRoleOption(o => o.setName("brans_rolu").setDescription("Verilecek branş Discord rolü").setRequired(true))
     .addStringOption(o => o.setName("sebep").setDescription("Kabul notu (isteğe bağlı)").setRequired(false)),
   new SlashCommandBuilder()
     .setName("branştan-at")
-    .setDescription("Kullanıcıyı branştan çıkarır ve branş rolünü alır.")
-    .addUserOption(o => o.setName("kullanici").setDescription("Branştan çıkarılacak kullanıcı").setRequired(true))
-    .addRoleOption(o => o.setName("brans_rolu").setDescription("Alınacak branş rolü").setRequired(true))
+    .setDescription("Kullanıcıyı branştan çıkarır: Discord rolünü alır ve Roblox grubundan atar.")
+    .addUserOption(o => o.setName("kullanici").setDescription("Branştan çıkarılacak Discord kullanıcısı").setRequired(true))
+    .addStringOption(o => o.setName("roblox_isim").setDescription("Çıkarılacak kişinin Roblox kullanıcı adı").setRequired(true))
+    .addRoleOption(o => o.setName("brans_rolu").setDescription("Alınacak branş Discord rolü").setRequired(true))
     .addStringOption(o => o.setName("sebep").setDescription("Çıkarılma sebebi (isteğe bağlı)").setRequired(false))
 ].map(c => c.toJSON());
 
@@ -1740,10 +1742,21 @@ client.on("interactionCreate", async interaction => {
     // ==================== BRANŞ KOMUTLARI ====================
     if (cmd === "branş-istek-kabul-et") {
       await interaction.deferReply();
+
+      if (!robloxGirisYapildi) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bot şu anda Roblox'a giriş yapamamış durumda.")] });
+      }
+      const groupId = config.GROUP_ID;
+      if (!groupId) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `GROUP_ID` ayarlanmamış.")] });
+      }
+
       const hedefUser = interaction.options.getUser("kullanici");
+      const robloxIsim = interaction.options.getString("roblox_isim");
       const bransRol = interaction.options.getRole("brans_rolu");
       const sebep = interaction.options.getString("sebep") || "Belirtilmedi";
 
+      // Discord üyesini çek
       let hedefUye = interaction.options.getMember("kullanici");
       if (!hedefUye) {
         try { hedefUye = await interaction.guild.members.fetch(hedefUser.id); } catch { hedefUye = null; }
@@ -1751,28 +1764,49 @@ client.on("interactionCreate", async interaction => {
       if (!hedefUye) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Kullanıcı sunucuda bulunamadı.")] });
       }
-      if (hedefUye.roles.cache.has(bransRol.id)) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.uyari).setDescription(`⚠️ **${hedefUser.tag}** zaten **${bransRol.name}** branşında.`)] });
+
+      // Roblox kullanıcısını bul
+      const robloxUserId = await roblox.getIdFromUsername(robloxIsim);
+      if (!robloxUserId) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** adında bir Roblox kullanıcısı bulunamadı.`)] });
       }
 
-      await hedefUye.roles.add(bransRol, `Branş kabulü — ${interaction.user.tag}: ${sebep}`);
+      // En alt rütbeyi bul (rank > 0, yani misafir değil)
+      const grupRolleri = (await getRobloxGroupRoles(groupId)).filter(r => r.rank > 0 && r.rank < 255).sort((a, b) => a.rank - b.rank);
+      const enAltRol = grupRolleri[0];
+      if (!enAltRol) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Grupta geçerli bir başlangıç rütbesi bulunamadı.")] });
+      }
+
+      // Discord rolü ver + Roblox'a en alt rütbeden al
+      const hatalar = [];
+      if (!hedefUye.roles.cache.has(bransRol.id)) {
+        try { await hedefUye.roles.add(bransRol, `Branş kabulü — ${interaction.user.tag}: ${sebep}`); } catch (e) { hatalar.push(`Discord rol hatası: ${e.message}`); }
+      }
+      try { await roblox.setRank(groupId, robloxUserId, enAltRol.rank); } catch (e) { hatalar.push(`Roblox rütbe hatası: ${e.message}`); }
 
       const embed = new EmbedBuilder()
-        .setColor(RENK.basari)
-        .setTitle("✅ Branş İsteği Kabul Edildi")
+        .setColor(hatalar.length ? RENK.uyari : RENK.basari)
+        .setTitle(hatalar.length ? "⚠️ Branş Kabulü (Kısmi)" : "✅ Branş İsteği Kabul Edildi")
         .setThumbnail(hedefUser.displayAvatarURL({ dynamic: true }))
         .addFields(
           { name: "👤 Kabul Edilen", value: `<@${hedefUser.id}>`, inline: true },
+          { name: "🎮 Roblox", value: robloxIsim, inline: true },
           { name: "🏅 Branş", value: `<@&${bransRol.id}>`, inline: true },
+          { name: "📊 Başlangıç Rütbesi", value: enAltRol.name, inline: true },
           { name: "👮 Yetkili", value: `<@${interaction.user.id}>`, inline: true },
           { name: "📝 Not", value: sebep, inline: false }
         )
         .setFooter({ text: "TSA Discord Bot - Branş Sistemi" })
         .setTimestamp();
 
-      await sendLogMessage(interaction.guild, "Branş İsteği Kabul Edildi", `${hedefUser.tag} kullanıcısı ${bransRol.name} branşına kabul edildi.`, RENK.basari, [
-        { name: "Üye", value: `<@${hedefUser.id}>`, inline: true },
+      if (hatalar.length) embed.addFields({ name: "⚠️ Hatalar", value: hatalar.join("\n"), inline: false });
+
+      await sendLogMessage(interaction.guild, "Branş İsteği Kabul Edildi", `${hedefUser.tag} → ${robloxIsim} kullanıcısı ${bransRol.name} branşına kabul edildi.`, RENK.basari, [
+        { name: "Discord", value: `<@${hedefUser.id}>`, inline: true },
+        { name: "Roblox", value: robloxIsim, inline: true },
         { name: "Branş", value: bransRol.name, inline: true },
+        { name: "Başlangıç Rütbesi", value: enAltRol.name, inline: true },
         { name: "Yetkili", value: `<@${interaction.user.id}>`, inline: true },
         { name: "Not", value: sebep, inline: false }
       ]);
@@ -1782,10 +1816,21 @@ client.on("interactionCreate", async interaction => {
 
     if (cmd === "branştan-at") {
       await interaction.deferReply();
+
+      if (!robloxGirisYapildi) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bot şu anda Roblox'a giriş yapamamış durumda.")] });
+      }
+      const groupId = config.GROUP_ID;
+      if (!groupId) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `GROUP_ID` ayarlanmamış.")] });
+      }
+
       const hedefUser = interaction.options.getUser("kullanici");
+      const robloxIsim = interaction.options.getString("roblox_isim");
       const bransRol = interaction.options.getRole("brans_rolu");
       const sebep = interaction.options.getString("sebep") || "Belirtilmedi";
 
+      // Discord üyesini çek
       let hedefUye = interaction.options.getMember("kullanici");
       if (!hedefUye) {
         try { hedefUye = await interaction.guild.members.fetch(hedefUser.id); } catch { hedefUye = null; }
@@ -1793,18 +1838,27 @@ client.on("interactionCreate", async interaction => {
       if (!hedefUye) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Kullanıcı sunucuda bulunamadı.")] });
       }
-      if (!hedefUye.roles.cache.has(bransRol.id)) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.uyari).setDescription(`⚠️ **${hedefUser.tag}** zaten **${bransRol.name}** branşında değil.`)] });
+
+      // Roblox kullanıcısını bul
+      const robloxUserId = await roblox.getIdFromUsername(robloxIsim);
+      if (!robloxUserId) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** adında bir Roblox kullanıcısı bulunamadı.`)] });
       }
 
-      await hedefUye.roles.remove(bransRol, `Branştan çıkarma — ${interaction.user.tag}: ${sebep}`);
+      // Discord rolünü al + Roblox gruptan at
+      const hatalar = [];
+      if (hedefUye.roles.cache.has(bransRol.id)) {
+        try { await hedefUye.roles.remove(bransRol, `Branştan çıkarma — ${interaction.user.tag}: ${sebep}`); } catch (e) { hatalar.push(`Discord rol hatası: ${e.message}`); }
+      }
+      try { await roblox.exile(groupId, robloxUserId); } catch (e) { hatalar.push(`Roblox gruptan atma hatası: ${e.message}`); }
 
       const embed = new EmbedBuilder()
-        .setColor(RENK.hata)
-        .setTitle("🚫 Branştan Çıkarıldı")
+        .setColor(hatalar.length ? RENK.uyari : RENK.hata)
+        .setTitle(hatalar.length ? "⚠️ Branştan Çıkarma (Kısmi)" : "🚫 Branştan Çıkarıldı")
         .setThumbnail(hedefUser.displayAvatarURL({ dynamic: true }))
         .addFields(
           { name: "👤 Çıkarılan", value: `<@${hedefUser.id}>`, inline: true },
+          { name: "🎮 Roblox", value: robloxIsim, inline: true },
           { name: "🏅 Branş", value: `<@&${bransRol.id}>`, inline: true },
           { name: "👮 Yetkili", value: `<@${interaction.user.id}>`, inline: true },
           { name: "📝 Sebep", value: sebep, inline: false }
@@ -1812,8 +1866,11 @@ client.on("interactionCreate", async interaction => {
         .setFooter({ text: "TSA Discord Bot - Branş Sistemi" })
         .setTimestamp();
 
-      await sendLogMessage(interaction.guild, "Branştan Çıkarıldı", `${hedefUser.tag} kullanıcısı ${bransRol.name} branşından çıkarıldı.`, RENK.hata, [
-        { name: "Üye", value: `<@${hedefUser.id}>`, inline: true },
+      if (hatalar.length) embed.addFields({ name: "⚠️ Hatalar", value: hatalar.join("\n"), inline: false });
+
+      await sendLogMessage(interaction.guild, "Branştan Çıkarıldı", `${hedefUser.tag} → ${robloxIsim} kullanıcısı ${bransRol.name} branşından çıkarıldı.`, RENK.hata, [
+        { name: "Discord", value: `<@${hedefUser.id}>`, inline: true },
+        { name: "Roblox", value: robloxIsim, inline: true },
         { name: "Branş", value: bransRol.name, inline: true },
         { name: "Yetkili", value: `<@${interaction.user.id}>`, inline: true },
         { name: "Sebep", value: sebep, inline: false }
