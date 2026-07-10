@@ -1014,85 +1014,25 @@ client.on("interactionCreate", async interaction => {
 
       // Kullanıcının profilindeki Roblox bilgisini çek
       try {
-        // Discord profilindeki aktiviteleri kontrol et
-        const user = await interaction.client.users.fetch(interaction.user.id);
-        const activities = user.presence?.activities || [];
-        
-        let robloxUsername = null;
-        
-        // RoWiFi genellikle "Playing Roblox as username" veya benzeri bir aktivite gösterir
-        for (const activity of activities) {
-          if (activity.name === "Roblox" || activity.name.includes("Roblox")) {
-            // Aktivite detaylarından kullanıcı adını çek
-            if (activity.details && activity.details.includes("as ")) {
-              robloxUsername = activity.details.split("as ")[1].trim();
-            } else if (activity.state) {
-              robloxUsername = activity.state.trim();
-            }
-            break;
-          }
-        }
+        // Discord aktiviteleri bazen güvenilir çalışmaz, direkt modal ile kullanıcı adını isteyelim
+        const modal = new ModalBuilder()
+          .setCustomId("roblox_username_modal")
+          .setTitle("Roblox Kullanıcı Adı");
 
-        // Aktiviteden bulunamazsa, kullanıcı adını manuel olarak iste
-        if (!robloxUsername) {
-          const modal = new ModalBuilder()
-            .setCustomId("roblox_username_modal")
-            .setTitle("Roblox Kullanıcı Adı");
+        const usernameInput = new TextInputBuilder()
+          .setCustomId("roblox_username")
+          .setLabel("Roblox Kullanıcı Adınız")
+          .setPlaceholder("Örn: Player123")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMinLength(3)
+          .setMaxLength(20);
 
-          const usernameInput = new TextInputBuilder()
-            .setCustomId("roblox_username")
-            .setLabel("Roblox Kullanıcı Adınız")
-            .setPlaceholder("Örn: Player123")
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-            .setMinLength(3)
-            .setMaxLength(20);
+        const actionRow = new ActionRowBuilder().addComponents(usernameInput);
+        modal.addComponents(actionRow);
 
-          const actionRow = new ActionRowBuilder().addComponents(usernameInput);
-          modal.addComponents(actionRow);
-
-          await interaction.editReply({ components: [] });
-          return interaction.showModal(modal);
-        }
-
-        // Roblox kullanıcı adını doğrula ve bağlantıyı kaydet
-        const robloxUser = await getRobloxUserByUsername(robloxUsername);
-        if (!robloxUser) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxUsername}** adında bir Roblox kullanıcısı bulunamadı.`)] });
-        }
-
-        // Başkası bu hesabı kullanıyor mu kontrol et
-        const baskasiKullaniyor = Object.entries(data.robloxBaglantilari).find(([discordId, robloxId]) => discordId !== interaction.user.id && robloxId === robloxUser.id);
-        if (baskasiKullaniyor) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-            `❌ Bu Roblox hesabı (**${robloxUser.name}**) başka bir Discord kullanıcısı tarafından zaten bağlanmış.` 
-          )] });
-        }
-
-        // Bağlantıyı kaydet
-        const mevcutBaglanti = data.robloxBaglantilari[interaction.user.id];
-        data.robloxBaglantilari[interaction.user.id] = robloxUser.id;
-        saveData();
-
-        const embed = new EmbedBuilder()
-          .setColor(RENK.basari)
-          .setTitle("✅ Roblox Hesabı Başarıyla Bağlandı")
-          .setDescription(
-            `Discord hesabınız Roblox hesabınız **${robloxUser.name}** (${robloxUser.id}) ile RoWiFi üzerinden başarıyla bağlandı.\n\n` +
-            `Artık rütbe ve branş komutlarını kullanabilirsiniz.`
-          )
-          .addFields(
-            { name: "👤 Roblox Kullanıcı", value: robloxUser.name, inline: true },
-            { name: "🆔 Roblox ID", value: robloxUser.id.toString(), inline: true }
-          )
-          .setFooter({ text: "TSA Discord Bot - RoWiFi Entegrasyonu" })
-          .setTimestamp();
-
-        if (mevcutBaglanti && mevcutBaglanti !== robloxUser.id) {
-          embed.addFields({ name: "📝 Not", value: `Eski bağlantınız (ID: ${mevcutBaglanti}) güncellendi.`, inline: false });
-        }
-
-        return interaction.editReply({ embeds: [embed] });
+        await interaction.editReply({ components: [] });
+        return interaction.showModal(modal);
       } catch (e) {
         console.error("RoWiFi entegrasyonu hatası:", e);
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox hesabınızı bağlarken bir hata oluştu. Lütfen tekrar deneyin.")] });
@@ -2620,3 +2560,4 @@ process.on("uncaughtException", (error) => {
 });
 
 client.login(config.TOKEN);
+
