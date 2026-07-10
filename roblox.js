@@ -133,12 +133,24 @@ async function getBotRank(groupId) {
   return { rank };
 }
 
+/**
+ * Proxy modunda: API sunucusuna ROBLOX_COOKIE ile yeniden giriş emri gönderir.
+ */
+async function relogin() {
+  const data = await proxyPost("/relogin", {});
+  _isLoggedIn = !!data.success;
+  _botUserId = data.botUserId ?? null;
+  _botUserName = data.botUserName ?? null;
+  return data;
+}
+
 module.exports = {
   get isLoggedIn() { return _isLoggedIn; },
   get botUserId() { return _botUserId; },
   get botUserName() { return _botUserName; },
   get isProxyMode() { return !!PROXY_URL; },
   checkStatus,
+  relogin,
   updateCookieOnProxy,
   directLogin,
   getRankInGroup,
