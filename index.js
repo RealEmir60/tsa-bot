@@ -231,6 +231,19 @@ function dogrulamaKoduOlustur() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+const DOGRULAMA_KOD_GECERLILIK_MS = 10 * 60 * 1000;
+
+function aktifDogrulamaKoduUret() {
+  return `TSA-${dogrulamaKoduOlustur()}`;
+}
+
+function dogrulamaKaydiniTemizle(discordId) {
+  if (data.dogrulamaKodlari[discordId]) {
+    delete data.dogrulamaKodlari[discordId];
+    saveData();
+  }
+}
+
 async function withTimeout(promise, ms, timeoutMessage) {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -833,42 +846,49 @@ client.on("interactionCreate", async interaction => {
       try {
         const robloxUser = await getRobloxUserByUsername(robloxUsername);
         if (!robloxUser) {
-          return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxUsername}** adında bir Roblox kullanıcısı bulunamadı.`)] });
+          return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxUsername}** adında bir Roblox kullanıcısı bulunamadı.`)], ephemeral: true });
         }
 
         const baskasiKullaniyor = Object.entries(data.robloxBaglantilari).find(([discordId, robloxId]) => discordId !== interaction.user.id && robloxId === robloxUser.id);
         if (baskasiKullaniyor) {
           return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
             `❌ Bu Roblox hesabı (**${robloxUser.name}**) başka bir Discord kullanıcısı tarafından zaten bağlanmış.`
-          )] });
+          )], ephemeral: true });
         }
 
-        const mevcutBaglanti = data.robloxBaglantilari[interaction.user.id];
-        data.robloxBaglantilari[interaction.user.id] = robloxUser.id;
+        const kod = aktifDogrulamaKoduUret();
+        const gecerlilikTarihi = Date.now() + DOGRULAMA_KOD_GECERLILIK_MS;
+
+        data.dogrulamaKodlari[interaction.user.id] = {
+          kod,
+          robloxUserId: robloxUser.id,
+          robloxUsername: robloxUser.name,
+          olusturulma: Date.now(),
+          bitis: gecerlilikTarihi
+        };
         saveData();
 
         const embed = new EmbedBuilder()
-          .setColor(RENK.basari)
-          .setTitle("✅ Roblox Hesabı Başarıyla Bağlandı")
+          .setColor(RENK.uyari)
+          .setTitle("🔐 Roblox Doğrulama Başlatıldı")
           .setDescription(
-            `Discord hesabınız Roblox hesabınız **${robloxUser.name}** (${robloxUser.id}) ile RoWiFi üzerinden başarıyla bağlandı.\n\n` +
-            `Artık rütbe ve branş komutlarını kullanabilirsiniz.`
+            `Roblox hesabınız olarak **${robloxUser.name}** seçildi.\n\n` +
+            `Aşağıdaki kodu Roblox profil açıklamanıza ekleyin, ardından \`/dogrula\` komutunda aynı kodu girin.`
           )
           .addFields(
             { name: "👤 Roblox Kullanıcı", value: robloxUser.name, inline: true },
-            { name: "🆔 Roblox ID", value: robloxUser.id.toString(), inline: true }
+            { name: "🆔 Roblox ID", value: robloxUser.id.toString(), inline: true },
+            { name: "🔑 Doğrulama Kodu", value: `\`${kod}\``, inline: false },
+            { name: "📝 Yapmanız Gereken", value: `Roblox profil açıklamanıza tam olarak \`${kod}\` yazın ve sonra \`/dogrula kod:${kod}\` çalıştırın.`, inline: false },
+            { name: "⏳ Geçerlilik", value: `<t:${Math.floor(gecerlilikTarihi / 1000)}:R>`, inline: true }
           )
-          .setFooter({ text: "TSA Discord Bot - RoWiFi Entegrasyonu" })
+          .setFooter({ text: "TSA Discord Bot - Profil Açıklaması Doğrulaması" })
           .setTimestamp();
-
-        if (mevcutBaglanti && mevcutBaglanti !== robloxUser.id) {
-          embed.addFields({ name: "📝 Not", value: `Eski bağlantınız (ID: ${mevcutBaglanti}) güncellendi.`, inline: false });
-        }
 
         return interaction.reply({ embeds: [embed], ephemeral: true });
       } catch (e) {
-        console.error("RoWiFi modal submit hatası:", e);
-        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox hesabınızı bağlarken bir hata oluştu. Lütfen tekrar deneyin.")] });
+        console.error("Roblox doğrulama modal hatası:", e);
+        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox doğrulama başlatılırken bir hata oluştu. Lütfen tekrar deneyin.")], ephemeral: true });
       }
     }
     return;
@@ -952,20 +972,6 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (cmd === "yenile") {
-      await interaction.deferReply({ ephemeral: true });
-
-      if (!config.ROWIFI_ROL) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `ROWIFI_ROL_ID` ayarlanmamış. Lütfen `.env` dosyasına ekleyin.")] });
-      }
-
-      const member = interaction.member;
-      if (!member.roles.cache.has(config.ROWIFI_ROL)) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          "❌ RoWiFi doğrulaması yapılmamış. Önce RoWiFi botunu kullanarak Roblox hesabınızı doğrulayın.\n\n" +
-          "RoWiFi rolü aldıktan sonra bu komutu tekrar kullanabilirsiniz."
-        )] });
-      }
-
       try {
         const modal = new ModalBuilder()
           .setCustomId("roblox_username_modal")
@@ -983,18 +989,87 @@ client.on("interactionCreate", async interaction => {
         const actionRow = new ActionRowBuilder().addComponents(usernameInput);
         modal.addComponents(actionRow);
 
-        await interaction.editReply({ components: [] });
         return interaction.showModal(modal);
       } catch (e) {
-        console.error("RoWiFi entegrasyonu hatası:", e);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox hesabınızı bağlarken bir hata oluştu. Lütfen tekrar deneyin.")] });
+        console.error("Yenile doğrulama hatası:", e);
+        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox doğrulama penceresi açılırken bir hata oluştu. Lütfen tekrar deneyin.")], ephemeral: true });
       }
     }
 
     if (cmd === "dogrula") {
-      return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.uyari).setDescription(
-        "⚠️ Bu komut artık kullanılmıyor. RoWiFi entegrasyonu ile `/yenile` komutunu kullanarak Roblox hesabınızı bağlayabilirsiniz."
-      )], ephemeral: true });
+      await interaction.deferReply({ ephemeral: true });
+
+      const girilenKod = interaction.options.getString("kod")?.trim();
+      const kayit = data.dogrulamaKodlari[interaction.user.id];
+
+      if (!kayit) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+          "❌ Aktif bir doğrulama kaydınız yok. Önce `/yenile` komutunu kullanın."
+        )] });
+      }
+
+      if (!girilenKod || girilenKod !== kayit.kod) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+          "❌ Girdiğiniz doğrulama kodu yanlış. `/yenile` ile verilen kodu aynen girin."
+        )] });
+      }
+
+      if (Date.now() > kayit.bitis) {
+        dogrulamaKaydiniTemizle(interaction.user.id);
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+          "❌ Doğrulama kodunuzun süresi dolmuş. Lütfen tekrar `/yenile` kullanın."
+        )] });
+      }
+
+      try {
+        const robloxDetail = await getRobloxUserDetail(kayit.robloxUserId);
+        const profilAciklamasi = robloxDetail.description || "";
+
+        if (!profilAciklamasi.includes(kayit.kod)) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+            `❌ Roblox profil açıklamasında \`${kayit.kod}\` kodu bulunamadı.\n\n` +
+            `Kodu profil açıklamanıza ekleyin, kaydedin ve birkaç saniye sonra tekrar deneyin.`
+          )] });
+        }
+
+        const baskasiKullaniyor = Object.entries(data.robloxBaglantilari).find(([discordId, robloxId]) => discordId !== interaction.user.id && robloxId === kayit.robloxUserId);
+        if (baskasiKullaniyor) {
+          dogrulamaKaydiniTemizle(interaction.user.id);
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+            `❌ Bu Roblox hesabı (**${kayit.robloxUsername}**) başka bir Discord kullanıcısı tarafından zaten bağlanmış.`
+          )] });
+        }
+
+        const mevcutBaglanti = data.robloxBaglantilari[interaction.user.id];
+        data.robloxBaglantilari[interaction.user.id] = kayit.robloxUserId;
+        delete data.dogrulamaKodlari[interaction.user.id];
+        saveData();
+
+        const embed = new EmbedBuilder()
+          .setColor(RENK.basari)
+          .setTitle("✅ Roblox Hesabı Başarıyla Bağlandı")
+          .setDescription(
+            `Discord hesabınız Roblox hesabı **${kayit.robloxUsername}** (${kayit.robloxUserId}) ile başarıyla doğrulandı ve bağlandı.\n\n` +
+            `Artık rütbe ve branş komutlarını kullanabilirsiniz.`
+          )
+          .addFields(
+            { name: "👤 Roblox Kullanıcı", value: kayit.robloxUsername, inline: true },
+            { name: "🆔 Roblox ID", value: kayit.robloxUserId.toString(), inline: true }
+          )
+          .setFooter({ text: "TSA Discord Bot - Profil Doğrulaması" })
+          .setTimestamp();
+
+        if (mevcutBaglanti && mevcutBaglanti !== kayit.robloxUserId) {
+          embed.addFields({ name: "📝 Not", value: `Eski bağlantınız (ID: ${mevcutBaglanti}) güncellendi.`, inline: false });
+        }
+
+        return interaction.editReply({ embeds: [embed] });
+      } catch (e) {
+        console.error("Doğrulama kontrol hatası:", e);
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+          "❌ Roblox profil doğrulaması yapılırken bir hata oluştu. Birkaç saniye sonra tekrar deneyin."
+        )] });
+      }
     }
 
     if (cmd === "rutbe-degistir" || cmd === "terfi" || cmd === "tenzil") {
