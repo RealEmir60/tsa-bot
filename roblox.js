@@ -134,6 +134,16 @@ async function getBotRank(groupId) {
 }
 
 /**
+ * Kullanıcıyı gruptan atar (exile).
+ */
+async function exile(groupId, userId) {
+  if (PROXY_URL) {
+    return proxyPost("/exile", { groupId, userId });
+  }
+  return _noblox.exile(groupId, userId);
+}
+
+/**
  * Proxy modunda: API sunucusuna ROBLOX_COOKIE ile yeniden giriş emri gönderir.
  */
 async function relogin() {
@@ -158,4 +168,5 @@ module.exports = {
   setRank,
   getIdFromUsername,
   getBotRank,
+  exile,
 };
