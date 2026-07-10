@@ -2367,4 +2367,11 @@ process.on("uncaughtException", (error) => {
   process.exit(1);
 });
 
-client.login(config.TOKEN);
+// Replit'te sadece API proxy çalışır — Discord botu yalnızca Render'da başlar.
+// Render otomatik olarak RENDER=true env var'ını set eder.
+if (!process.env.RENDER) {
+  console.log("ℹ️ Bu ortam Render değil (RENDER env var yok). Discord botu başlatılmıyor.");
+  console.log("ℹ️ Roblox API proxy ayrı workflow'da çalışıyor. Express ayakta (UptimeRobot için).");
+} else {
+  client.login(config.TOKEN);
+}
