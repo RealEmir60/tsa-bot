@@ -530,22 +530,19 @@ const commands = [
     .addRoleOption(o => o.setName("rol").setDescription("Denetlenecek rol").setRequired(true)),
   new SlashCommandBuilder()
     .setName("rutbe-degistir")
-    .setDescription("Bir kullanıcının Roblox grubundaki rütbesini belirli bir rütbeye ayarlar.")
+    .setDescription("Bir kullanıcının ana Roblox grubundaki rütbesini belirli bir rütbeye ayarlar.")
     .addStringOption(o => o.setName("roblox_isim").setDescription("Roblox kullanıcı adı").setRequired(true))
-    .addStringOption(o => o.setName("grup").setDescription("Grup seçin").setRequired(true).setAutocomplete(true))
     .addStringOption(o => o.setName("rutbe").setDescription("Yeni rütbe (yazmaya başlayınca öneriler çıkar)").setRequired(true).setAutocomplete(true))
     .addStringOption(o => o.setName("sebep").setDescription("Değişikliğin sebebi").setRequired(true)),
   new SlashCommandBuilder()
     .setName("terfi")
-    .setDescription("Bir kullanıcıyı Roblox grubunda bir üst rütbeye terfi ettirir.")
+    .setDescription("Bir kullanıcıyı ana Roblox grubunda bir üst rütbeye terfi ettirir.")
     .addStringOption(o => o.setName("roblox_isim").setDescription("Roblox kullanıcı adı").setRequired(true))
-    .addStringOption(o => o.setName("grup").setDescription("Grup seçin").setRequired(true).setAutocomplete(true))
     .addStringOption(o => o.setName("sebep").setDescription("Terfi sebebi").setRequired(true)),
   new SlashCommandBuilder()
     .setName("tenzil")
-    .setDescription("Bir kullanıcıyı Roblox grubunda bir alt rütbeye tenzil eder (indirir).")
+    .setDescription("Bir kullanıcıyı ana Roblox grubunda bir alt rütbeye tenzil eder (indirir).")
     .addStringOption(o => o.setName("roblox_isim").setDescription("Roblox kullanıcı adı").setRequired(true))
-    .addStringOption(o => o.setName("grup").setDescription("Grup seçin").setRequired(true).setAutocomplete(true))
     .addStringOption(o => o.setName("sebep").setDescription("Tenzil sebebi").setRequired(true)),
   new SlashCommandBuilder()
     .setName("yenile")
@@ -774,39 +771,43 @@ async function sendLogMessage(guild, title, description, color, fields = []) {
 
 client.on("interactionCreate", async interaction => {
   if (interaction.isAutocomplete()) {
-    if (["rutbe-degistir", "terfi", "tenzil", "branş-istek-kabul-et", "branştan-at", "branş-rutbe-degistir"].includes(interaction.commandName)) {
-      if (interaction.options.getFocused(true).name === "grup") {
-        const yazilan = interaction.options.getString("grup").toLocaleLowerCase("tr-TR").trim();
-        const eslesenler = Object.entries(GRUPLAR)
-          .filter(([isim]) => isim.toLocaleLowerCase("tr-TR").includes(yazilan))
-          .slice(0, 25);
-        return interaction.respond(eslesenler.map(([isim]) => ({ name: isim, value: isim })));
-      }
+    const branşGrupKomutlari = ["branş-istek-kabul-et", "branştan-at", "branş-rutbe-degistir"];
+    const rutbeSecmeliKomutlar = ["rutbe-degistir", "branş-rutbe-degistir"];
 
-      if (interaction.options.getFocused(true).name === "rutbe") {
-        const grupAdi = interaction.options.getString("grup");
-        if (!grupAdi || !GRUPLAR[grupAdi]) return interaction.respond([]);
+    if (branşGrupKomutlari.includes(interaction.commandName) && interaction.options.getFocused(true).name === "grup") {
+      const yazilan = (interaction.options.getString("grup") || "").toLocaleLowerCase("tr-TR").trim();
+      const eslesenler = Object.entries(GRUPLAR)
+        .filter(([isim]) => isim.toLocaleLowerCase("tr-TR").includes(yazilan))
+        .slice(0, 25);
+      return interaction.respond(eslesenler.map(([isim]) => ({ name: isim, value: isim })));
+    }
 
-        try {
-          const groupId = GRUPLAR[grupAdi].id;
-          const yazilan = interaction.options.getFocused().toLocaleLowerCase("tr-TR").trim();
-          const roller = await getRobloxGroupRoles(groupId);
-          const siraliRoller = roller.slice().sort((a, b) => b.rank - a.rank);
+    if (rutbeSecmeliKomutlar.includes(interaction.commandName) && interaction.options.getFocused(true).name === "rutbe") {
+      try {
+        const groupId = interaction.commandName === "rutbe-degistir"
+          ? config.GROUP_ID
+          : GRUPLAR[interaction.options.getString("grup")]?.id;
 
-          const eslesenler = (yazilan
-            ? siraliRoller.filter(r => r.name.toLocaleLowerCase("tr-TR").includes(yazilan))
-            : siraliRoller
-          ).slice(0, 25);
+        if (!groupId) return interaction.respond([]);
 
-          return interaction.respond(
-            eslesenler.map(r => ({ name: `${r.name} (Rank ${r.rank})`, value: r.name }))
-          );
-        } catch (e) {
-          console.error("Rütbe autocomplete hatası:", e);
-          return interaction.respond([]);
-        }
+        const yazilan = interaction.options.getFocused().toLocaleLowerCase("tr-TR").trim();
+        const roller = await getRobloxGroupRoles(groupId);
+        const siraliRoller = roller.slice().sort((a, b) => b.rank - a.rank);
+
+        const eslesenler = (yazilan
+          ? siraliRoller.filter(r => r.name.toLocaleLowerCase("tr-TR").includes(yazilan))
+          : siraliRoller
+        ).slice(0, 25);
+
+        return interaction.respond(
+          eslesenler.map(r => ({ name: `${r.name} (Rank ${r.rank})`, value: r.name }))
+        );
+      } catch (e) {
+        console.error("Rütbe autocomplete hatası:", e);
+        return interaction.respond([]);
       }
     }
+
     return;
   }
 
@@ -1006,15 +1007,14 @@ client.on("interactionCreate", async interaction => {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bot şu anda Roblox'a giriş yapamamış durumda (cookie geçersiz veya süresi dolmuş olabilir). Konsol loglarını kontrol et veya /cookie-yenile ile güncelle.")] });
       }
 
+      const groupId = config.GROUP_ID;
+      const grupAdi = "Ana Grup";
       const robloxIsim = interaction.options.getString("roblox_isim");
-      const grupAdi = interaction.options.getString("grup");
       const sebep = interaction.options.getString("sebep");
 
-      if (!grupAdi || !GRUPLAR[grupAdi]) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Geçersiz grup seçimi.")] });
+      if (!groupId) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `GROUP_ID` ayarlanmamış. Ana grup komutları kullanılamaz.")] });
       }
-
-      const groupId = GRUPLAR[grupAdi].id;
 
       const interactionUserRobloxId = data.robloxBaglantilari[interaction.user.id];
       if (!interactionUserRobloxId) {
@@ -1027,8 +1027,8 @@ client.on("interactionCreate", async interaction => {
       const yetkiliGrupRutbesi = await kullaniciGrupRutbesi(interactionUserRobloxId, groupId);
       if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= 1) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          `❌ **${grupAdi}** grubunda yetkili değilsiniz veya grupta üye değilsiniz.\n\n` +
-          `Sadece kendi üye olduğunuz ve yetkili olduğunuz gruplarda rütbe değişikliği yapabilirsiniz.`
+          `❌ Ana grupta yetkili değilsiniz veya grupta üye değilsiniz.\n\n` +
+          `Bu komutlar sadece ana gruba bağlı çalışır ve yalnızca kendi rütbenizin altındaki kullanıcılarda işlem yapabilir.`
         )] });
       }
 
