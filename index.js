@@ -1740,11 +1740,14 @@ client.on("interactionCreate", async interaction => {
     // ==================== BRANŞ KOMUTLARI ====================
     if (cmd === "branş-istek-kabul-et") {
       await interaction.deferReply();
-      const hedefUye = interaction.options.getMember("kullanici");
       const hedefUser = interaction.options.getUser("kullanici");
       const bransRol = interaction.options.getRole("brans_rolu");
       const sebep = interaction.options.getString("sebep") || "Belirtilmedi";
 
+      let hedefUye = interaction.options.getMember("kullanici");
+      if (!hedefUye) {
+        try { hedefUye = await interaction.guild.members.fetch(hedefUser.id); } catch { hedefUye = null; }
+      }
       if (!hedefUye) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Kullanıcı sunucuda bulunamadı.")] });
       }
@@ -1779,11 +1782,14 @@ client.on("interactionCreate", async interaction => {
 
     if (cmd === "branştan-at") {
       await interaction.deferReply();
-      const hedefUye = interaction.options.getMember("kullanici");
       const hedefUser = interaction.options.getUser("kullanici");
       const bransRol = interaction.options.getRole("brans_rolu");
       const sebep = interaction.options.getString("sebep") || "Belirtilmedi";
 
+      let hedefUye = interaction.options.getMember("kullanici");
+      if (!hedefUye) {
+        try { hedefUye = await interaction.guild.members.fetch(hedefUser.id); } catch { hedefUye = null; }
+      }
       if (!hedefUye) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Kullanıcı sunucuda bulunamadı.")] });
       }
