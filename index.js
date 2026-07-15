@@ -789,10 +789,34 @@ client.on("interactionCreate", async interaction => {
 
     if (branşGrupKomutlari.includes(interaction.commandName) && interaction.options.getFocused(true).name === "grup") {
       const yazilan = (interaction.options.getString("grup") || "").toLocaleLowerCase("tr-TR").trim();
-      const eslesenler = Object.entries(GRUPLAR)
-        .filter(([isim]) => isim.toLocaleLowerCase("tr-TR").includes(yazilan))
-        .slice(0, 25);
-      return interaction.respond(eslesenler.map(([isim]) => ({ name: isim, value: isim })));
+
+      const isBranşYetkiliAutocomplete = interaction.member?.roles.cache.has(config.BRANS_YETKILI_ROL) || interaction.member?.permissions.has(PermissionsBitField.Flags.Administrator);
+      if (!isBranşYetkiliAutocomplete) {
+        return interaction.respond([]);
+      }
+
+      const uyeRobloxId = data.robloxBaglantilari[interaction.user.id];
+      if (!uyeRobloxId || !robloxGirisYapildi) {
+        return interaction.respond([]);
+      }
+
+      try {
+        const sonuclar = await Promise.all(
+          Object.entries(GRUPLAR).map(async ([isim, bilgi]) => {
+            const rutbe = await kullaniciGrupRutbesi(uyeRobloxId, bilgi.id);
+            return { isim, yetkiliMi: !!rutbe && rutbe.rank > 1 };
+          })
+        );
+
+        const eslesenler = sonuclar
+          .filter(s => s.yetkiliMi && s.isim.toLocaleLowerCase("tr-TR").includes(yazilan))
+          .slice(0, 25);
+
+        return interaction.respond(eslesenler.map(s => ({ name: s.isim, value: s.isim })));
+      } catch (e) {
+        console.error("Branş grup autocomplete hatası:", e);
+        return interaction.respond([]);
+      }
     }
 
     if (rutbeSecmeliKomutlar.includes(interaction.commandName) && interaction.options.getFocused(true).name === "rutbe") {
@@ -898,7 +922,7 @@ client.on("interactionCreate", async interaction => {
 
   const cmd = interaction.commandName;
   const isYetkili = interaction.member?.roles.cache.has(config.YETKILI_ROL) || interaction.member?.permissions.has(PermissionsBitField.Flags.Administrator);
-  const isBranşYetkili = interaction.member?.roles.cache.has(config.BRANS_YETKILI_ROL) || isYetkili;
+  const isBranşYetkili = interaction.member?.roles.cache.has(config.BRANS_YETKILI_ROL) || interaction.member?.permissions.has(PermissionsBitField.Flags.Administrator);
   const isEgitimHost = interaction.member?.roles.cache.has(EGITIM_ROL_ID);
 
   const yetkiliKomutlar = ["kick", "ban", "unban", "temizle", "yavas-mod", "kilitle", "kilit-ac", "rol-ver", "rol-al", "uyari-ver", "uyari-sil", "uyari-liste", "sicil-temizle", "dm-mesaj", "haber-yap", "egitim-duyuru", "duyuru", "aktiflik-denetleme", "rutbe-degistir", "terfi", "tenzil", "dm-duyuru", "cookie-yenile"];
@@ -909,7 +933,7 @@ client.on("interactionCreate", async interaction => {
   }
 
   if (branşKomutlar.includes(cmd) && !isBranşYetkili) {
-    return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bu komutu kullanmak için branş yetkisine ihtiyacınız var!")], ephemeral: true });
+    return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Branş Rütbe Yetkiniz yok!")], ephemeral: true });
   }
 
   try {
@@ -1113,16 +1137,16 @@ client.on("interactionCreate", async interaction => {
           return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** adında bir Roblox kullanıcısı bulunamadı.`)] });
         }
 
+        if (userId === interactionUserRobloxId) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+            "❌ Kendinize terfi, tenzil veya rütbe değişikliği yapamazsınız."
+          )] });
+        }
+
         const hedefGrupRutbesi = await kullaniciGrupRutbesi(userId, groupId);
         if (!hedefGrupRutbesi) {
           return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
             `❌ **${robloxIsim}** kullanıcısı **${grupAdi}** grubunda üye değil.`
-          )] });
-        }
-
-        if (userId === interactionUserRobloxId) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-            "❌ Kendinize rütbe değişikliği yapamazsınız."
           )] });
         }
 
@@ -1228,6 +1252,10 @@ client.on("interactionCreate", async interaction => {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Geçersiz grup seçimi.")] });
       }
 
+      if (hedefUser.id === interaction.user.id) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Kendinizi branşa kabul edemezsiniz.")] });
+      }
+
       const groupId = GRUPLAR[grupAdi].id;
 
       const interactionUserRobloxId = data.robloxBaglantilari[interaction.user.id];
@@ -1257,6 +1285,10 @@ client.on("interactionCreate", async interaction => {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** adında bir Roblox kullanıcısı bulunamadı.`)] });
       }
 
+      if (robloxUserId === interactionUserRobloxId) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Kendinizi branşa kabul edemezsiniz.")] });
+      }
+
       const hedefGrupRutbesi = await kullaniciGrupRutbesi(robloxUserId, groupId);
 
       if (hedefGrupRutbesi && hedefGrupRutbesi.rank >= yetkiliGrupRutbesi.rank) {
@@ -1270,6 +1302,14 @@ client.on("interactionCreate", async interaction => {
       const enAltRol = grupRolleri[0];
       if (!enAltRol) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Grupta geçerli bir başlangıç rütbesi bulunamadı.")] });
+      }
+
+      const botRank = await robloxBotRankiGetir(groupId);
+      if (botRank !== null && enAltRol.rank >= botRank) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+          `❌ **${enAltRol.name}** başlangıç rütbesi, botun kendi rütbesinden yüksek veya eşit olduğu için atanamaz.\n` +
+          `Bu, botun/sahibin üstüne çıkarılmasını önlemek için bilerek engellendi.`
+        )] });
       }
 
       const hatalar = [];
@@ -1328,6 +1368,10 @@ client.on("interactionCreate", async interaction => {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Geçersiz grup seçimi.")] });
       }
 
+      if (hedefUser.id === interaction.user.id) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Kendinizi branştan çıkaramazsınız.")] });
+      }
+
       const groupId = GRUPLAR[grupAdi].id;
 
       const interactionUserRobloxId = data.robloxBaglantilari[interaction.user.id];
@@ -1355,6 +1399,10 @@ client.on("interactionCreate", async interaction => {
       const robloxUserId = await roblox.getIdFromUsername(robloxIsim);
       if (!robloxUserId) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** adında bir Roblox kullanıcısı bulunamadı.`)] });
+      }
+
+      if (robloxUserId === interactionUserRobloxId) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Kendinizi branştan çıkaramazsınız.")] });
       }
 
       const hedefGrupRutbesi = await kullaniciGrupRutbesi(robloxUserId, groupId);
@@ -1441,16 +1489,16 @@ client.on("interactionCreate", async interaction => {
           return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxIsim}** adında bir Roblox kullanıcısı bulunamadı.`)] });
         }
 
+        if (userId === interactionUserRobloxId) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+            "❌ Kendinize rütbe değişikliği yapamazsınız."
+          )] });
+        }
+
         const hedefGrupRutbesi = await kullaniciGrupRutbesi(userId, groupId);
         if (!hedefGrupRutbesi) {
           return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
             `❌ **${robloxIsim}** kullanıcısı **${grupAdi}** grubunda üye değil.`
-          )] });
-        }
-
-        if (userId === interactionUserRobloxId) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-            "❌ Kendinize rütbe değişikliği yapamazsınız."
           )] });
         }
 
@@ -1472,6 +1520,14 @@ client.on("interactionCreate", async interaction => {
           return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
             `❌ **${hedefRol.name}** rütbesi, sizin kendi rütbenizden (**${yetkiliGrupRutbesi.name}** - Rank ${yetkiliGrupRutbesi.rank}) yüksek veya eşit olduğu için atanamaz.\n\n` +
             `Kendi rütbenizin altındaki rütbeleri atayabilirsiniz.`
+          )] });
+        }
+
+        const botRank = await robloxBotRankiGetir(groupId);
+        if (botRank !== null && hedefRol.rank >= botRank) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+            `❌ **${hedefRol.name}** rütbesi, botun kendi rütbesinden yüksek veya eşit olduğu için atanamaz.\n` +
+            `Bu, botun/sahibin üstüne çıkarılmasını önlemek için bilerek engellendi.`
           )] });
         }
 
