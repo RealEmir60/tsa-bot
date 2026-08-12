@@ -1128,7 +1128,7 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    if (cmd === "rutbe-degistir" || cmd === "terfi" || cmd === "tenzil") {
+    if (cmd === "rutbe-degistir" || cmd === "terfi" || cmd === "tenzil" || cmd === "branş-rutbe-degistir") {
       await interaction.deferReply();
 
       if (!config.ROBLOX_COOKIE) {
@@ -1138,13 +1138,20 @@ client.on("interactionCreate", async interaction => {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bot şu anda Roblox'a giriş yapamamış durumda (cookie geçersiz veya süresi dolmuş olabilir). Konsol loglarını kontrol et veya /cookie-yenile ile güncelle.")] });
       }
 
-      const groupId = config.GROUP_ID;
-      const grupAdi = "Ana Grup";
+      const bransRutbeKomutu = cmd === "branş-rutbe-degistir";
+      const secilenGrupAdi = bransRutbeKomutu ? interaction.options.getString("grup") : null;
+      const groupId = bransRutbeKomutu
+        ? GRUPLAR[secilenGrupAdi]?.id
+        : config.GROUP_ID;
+      const grupAdi = bransRutbeKomutu ? secilenGrupAdi : "Ana Grup";
       const robloxIsim = interaction.options.getString("roblox_isim");
       const sebep = interaction.options.getString("sebep");
 
       if (!groupId) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ `.env` dosyasında `GROUP_ID` ayarlanmamış. Ana grup komutları kullanılamaz.")] });
+        const hataMesaji = bransRutbeKomutu
+          ? "❌ Geçersiz branş grubu seçildi. Lütfen listeden geçerli bir grup seçin."
+          : "❌ `.env` dosyasında `GROUP_ID` ayarlanmamış. Ana grup komutları kullanılamaz.";
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(hataMesaji)] });
       }
 
       const interactionUserRobloxId = data.robloxBaglantilari[interaction.user.id];
@@ -1158,8 +1165,8 @@ client.on("interactionCreate", async interaction => {
       const yetkiliGrupRutbesi = await kullaniciGrupRutbesi(interactionUserRobloxId, groupId);
       if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= 1) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          `❌ Ana grupta yetkili değilsiniz veya grupta üye değilsiniz.\n\n` +
-          `Bu komutlar sadece ana gruba bağlı çalışır ve yalnızca kendi rütbenizin altındaki kullanıcılarda işlem yapabilir.`
+          `❌ **${grupAdi}** grubunda yetkili değilsiniz veya grupta üye değilsiniz.\n\n` +
+          `Bu komut yalnızca yetkili olduğunuz grupta ve kendi rütbenizin altındaki kullanıcılarda işlem yapabilir.`
         )] });
       }
 
