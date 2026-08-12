@@ -680,7 +680,7 @@ const commands = [
     .addStringOption(o => o.setName("roblox_isim").setDescription("Roblox kullanıcı adı").setRequired(true)),
 
   new SlashCommandBuilder()
-    .setName("branş-istek-kabul-et")
+    .setName("brans-istek-kabul-et")
     .setDescription("Branş isteğini kabul eder: Discord rolü verir ve seçilen Roblox grubuna en alt rütbeden alır.")
     .addUserOption(o => o.setName("kullanici").setDescription("Branşa kabul edilecek Discord kullanıcısı").setRequired(true))
     .addStringOption(o => o.setName("roblox_isim").setDescription("Kabul edilecek kişinin Roblox kullanıcı adı").setRequired(true))
@@ -688,7 +688,7 @@ const commands = [
     .addRoleOption(o => o.setName("brans_rolu").setDescription("Verilecek branş Discord rolü").setRequired(true))
     .addStringOption(o => o.setName("sebep").setDescription("Kabul notu (isteğe bağlı)").setRequired(false)),
   new SlashCommandBuilder()
-    .setName("branştan-at")
+    .setName("branstan-at")
     .setDescription("Kullanıcıyı branştan çıkarır: Discord rolünü alır ve seçilen Roblox grubundan atar.")
     .addUserOption(o => o.setName("kullanici").setDescription("Branştan çıkarılacak Discord kullanıcısı").setRequired(true))
     .addStringOption(o => o.setName("roblox_isim").setDescription("Çıkarılacak kişinin Roblox kullanıcı adı").setRequired(true))
@@ -696,7 +696,7 @@ const commands = [
     .addRoleOption(o => o.setName("brans_rolu").setDescription("Alınacak branş Discord rolü").setRequired(true))
     .addStringOption(o => o.setName("sebep").setDescription("Çıkarılma sebebi (isteğe bağlı)").setRequired(false)),
   new SlashCommandBuilder()
-    .setName("branş-rutbe-degistir")
+    .setName("brans-rutbe-degistir")
     .setDescription("Bir kullanıcının seçilen Roblox grubundaki rütbesini belirli bir rütbeye ayarlar.")
     .addStringOption(o => o.setName("roblox_isim").setDescription("Roblox kullanıcı adı").setRequired(true))
     .addStringOption(o => o.setName("grup").setDescription("Grup seçin").setRequired(true).setAutocomplete(true))
@@ -816,8 +816,8 @@ async function sendLogMessage(guild, title, description, color, fields = []) {
 
 client.on("interactionCreate", async interaction => {
   if (interaction.isAutocomplete()) {
-    const branşGrupKomutlari = ["branş-istek-kabul-et", "branştan-at", "branş-rutbe-degistir"];
-    const rutbeSecmeliKomutlar = ["rutbe-degistir", "branş-rutbe-degistir"];
+    const branşGrupKomutlari = ["brans-istek-kabul-et", "branstan-at", "brans-rutbe-degistir"];
+    const rutbeSecmeliKomutlar = ["rutbe-degistir", "brans-rutbe-degistir"];
 
     if (branşGrupKomutlari.includes(interaction.commandName) && interaction.options.getFocused(true).name === "grup") {
       const yazilan = (interaction.options.getString("grup") || "").toLocaleLowerCase("tr-TR").trim();
@@ -958,7 +958,7 @@ client.on("interactionCreate", async interaction => {
   const isEgitimHost = interaction.member?.roles.cache.has(EGITIM_ROL_ID);
 
   const yetkiliKomutlar = ["kick", "ban", "unban", "temizle", "yavas-mod", "kilitle", "kilit-ac", "rol-ver", "rol-al", "uyari-ver", "uyari-sil", "uyari-liste", "sicil-temizle", "dm-mesaj", "haber-yap", "egitim-duyuru", "duyuru", "aktiflik-denetleme", "rutbe-degistir", "terfi", "tenzil", "dm-duyuru", "cookie-yenile"];
-  const branşKomutlar = ["branş-istek-kabul-et", "branştan-at", "branş-rutbe-degistir"];
+  const branşKomutlar = ["brans-istek-kabul-et", "branstan-at", "brans-rutbe-degistir"];
 
   if (yetkiliKomutlar.includes(cmd) && !isYetkili) {
     return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bu komutu kullanmak için yeterli yetkiniz yok!")], ephemeral: true });
@@ -1128,7 +1128,7 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    if (cmd === "rutbe-degistir" || cmd === "terfi" || cmd === "tenzil" || cmd === "branş-rutbe-degistir") {
+    if (cmd === "rutbe-degistir" || cmd === "terfi" || cmd === "tenzil" || cmd === "brans-rutbe-degistir") {
       await interaction.deferReply();
 
       if (!config.ROBLOX_COOKIE) {
@@ -1138,7 +1138,7 @@ client.on("interactionCreate", async interaction => {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bot şu anda Roblox'a giriş yapamamış durumda (cookie geçersiz veya süresi dolmuş olabilir). Konsol loglarını kontrol et veya /cookie-yenile ile güncelle.")] });
       }
 
-      const bransRutbeKomutu = cmd === "branş-rutbe-degistir";
+      const bransRutbeKomutu = cmd === "brans-rutbe-degistir";
       const secilenGrupAdi = bransRutbeKomutu ? interaction.options.getString("grup") : null;
       const groupId = bransRutbeKomutu
         ? GRUPLAR[secilenGrupAdi]?.id
@@ -1274,7 +1274,7 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    if (cmd === "branş-istek-kabul-et") {
+    if (cmd === "brans-istek-kabul-et") {
       await interaction.deferReply();
 
       if (!robloxGirisYapildi) {
@@ -1390,7 +1390,7 @@ client.on("interactionCreate", async interaction => {
       return interaction.editReply({ embeds: [embed] });
     }
 
-    if (cmd === "branştan-at") {
+    if (cmd === "branstan-at") {
       await interaction.deferReply();
 
       if (!robloxGirisYapildi) {
@@ -1490,7 +1490,7 @@ client.on("interactionCreate", async interaction => {
       return interaction.editReply({ embeds: [embed] });
     }
 
-    if (cmd === "branş-rutbe-degistir") {
+    if (cmd === "brans-rutbe-degistir") {
       await interaction.deferReply();
 
       if (!robloxGirisYapildi) {
