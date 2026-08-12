@@ -408,6 +408,40 @@ async function getRobloxGameInfo(universeId) {
   return json.data?.[0] || {};
 }
 
+let robloxUniverseIdCache = null;
+
+async function getRobloxActivePlayerCount() {
+  const placeId = String(config.OYUN_PLACE_ID || '').trim();
+  if (!placeId) return null;
+
+  if (!robloxUniverseIdCache) {
+    robloxUniverseIdCache = await getRobloxUniverseIdFromPlace(placeId);
+  }
+  if (!robloxUniverseIdCache) return null;
+
+  const gameInfo = await getRobloxGameInfo(robloxUniverseIdCache);
+  return Number.isFinite(gameInfo.playing) ? gameInfo.playing : 0;
+}
+
+async function updateBotPresence() {
+  if (!client.user) return;
+
+  try {
+    const activePlayers = await getRobloxActivePlayerCount();
+    const activityName = activePlayers === null
+      ? 'Roblox oyunu ayarlanmadı'
+      : `TSA - Oyun Aktiflik : ${activePlayers.toLocaleString('tr-TR')}`;
+
+    client.user.setPresence({
+      activities: [{ name: activityName, type: ActivityType.Playing }],
+      status: 'online'
+    });
+    console.log(`✅ Bot durumu güncellendi: ${activityName}`);
+  } catch (error) {
+    console.error('Roblox aktif oyuncu sayısı alınamadı:', error.message);
+  }
+}
+
 async function getRobloxGameIcon(universeId) {
   const res = await fetch(`https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&size=512x512&format=Png`);
   if (!res.ok) return null;
@@ -673,10 +707,8 @@ const commands = [
 client.once("ready", async () => {
   console.log(`✅ ${client.user.tag} hazır`);
 
-  client.user.setPresence({
-    activities: [{ name: "TSA - Turkish Special Army", type: ActivityType.Playing }],
-    status: "online"
-  });
+  await updateBotPresence();
+  setInterval(updateBotPresence, 60 * 1000);
 
   const rest = new REST({ version: "10" }).setToken(config.TOKEN);
   try {
