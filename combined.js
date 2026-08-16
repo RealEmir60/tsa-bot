@@ -19,7 +19,14 @@ console.log('✅ index.js serveri devre dışı bırakıldı; orijinal dosya de�
 const app = express();
 app.use(express.json({ limit: '32kb' }));
 
-const { registerMarketRoutes } = require('./market.js');
+const marketModule = require('./market.js');
+const registerMarketRoutes = typeof marketModule === 'function'
+  ? marketModule
+  : marketModule && marketModule.registerMarketRoutes;
+
+if (typeof registerMarketRoutes !== 'function') {
+  throw new TypeError('market.js registerMarketRoutes fonksiyonunu export etmiyor. Güncel market.js dosyasını yükleyin.');
+}
 registerMarketRoutes(app);
 
 app.get('/', (_req, res) => res.send('OK - TSA Bot + Rütbe Market Aktif'));
