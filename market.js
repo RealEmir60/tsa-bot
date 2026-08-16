@@ -56,4 +56,7 @@ function registerMarketRoutes(app) {
   });
 }
 
-module.exports = { registerMarketRoutes };
+// Hem `require('./market.js')(app)` hem de
+// `const { registerMarketRoutes } = require('./market.js')` biçimini destekler.
+module.exports = registerMarketRoutes;
+module.exports.registerMarketRoutes = registerMarketRoutes;
