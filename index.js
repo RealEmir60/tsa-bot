@@ -69,6 +69,11 @@ function robloxProfilSayfasiOlustur(veri, sayfa) {
   return { embed, butonlar, toplamSayfa, sayfa };
 }
 
+// ============================================================
+// KONUŞMA BOTU — oto cevaplar artık yalnızca bota hitap edilince
+// çalışır. "TSA bot", "@TSA bot" veya botun mesajına yanıt verilince.
+// GEMINI_API_KEY eklersen gerçek yapay zekâ ile sohbet eder.
+// ============================================================
 const OTO_CEVAPLAR = [
   { tetikleyiciler: ["sa", "selamun aleykum", "selamünaleyküm", "selamun aleyküm", "selamünaleykum"], cevap: "Aleyküm Selam. 🎖️" },
   { tetikleyiciler: ["merhaba"], cevap: "Merhaba! 👋" },
@@ -94,6 +99,79 @@ function otoCevapBul(mesajIcerigi) {
     }
   }
   return null;
+}
+
+// Bota hangi kelimelerle hitap edilebilir (mesajın BAŞINDA olması yeterli).
+const BOT_ADLARI = ["tsa bot", "tsabot", "tsa-bot", "bot", "asistan"];
+
+function mesajBotaMiHitapEdiyor(message) {
+  // 1) @TSA bot etiketi
+  if (message.mentions.has(client.user.id)) return true;
+
+  // 2) Botun mesajına yanıt (reply) verilmişse
+  if (message.reference && message.reference.messageId) {
+    const referans = message.channel.messages.cache.get(message.reference.messageId);
+    if (referans && referans.author && referans.author.id === client.user.id) return true;
+  }
+
+  // 3) Mesaj "TSA bot ..." gibi bir hitap ile başlıyorsa
+  const ilk = message.content.toLocaleLowerCase("tr-TR").trim();
+  return BOT_ADLARI.some(ad =>
+    ilk === ad ||
+    ilk.startsWith(ad + " ") ||
+    ilk.startsWith(ad + ",") ||
+    ilk.startsWith(ad + ".") ||
+    ilk.startsWith(ad + "!")
+  );
+}
+
+// Aynı kullanıcıya 3 saniyede bir cevap ver (spam koruması).
+const sonBotYanitZamani = new Map();
+
+async function geminiYanit(message) {
+  // @etiketi ve "TSA bot" hitabını mesajdan temizle, kalan soruyu yapay zekâya gönder.
+  const soru = message.content
+    .replace(new RegExp(`<@!?${client.user.id}>`, "g"), "")
+    .replace(/^\s*(tsa bot|tsabot|tsa-bot|bot|asistan)[,.\s!]*/i, "")
+    .trim();
+
+  if (!soru) return null;
+
+  const modeller = [config.GEMINI_MODEL || "gemini-2.5-flash", "gemini-2.0-flash"];
+  let sonHata = null;
+
+  for (const model of modeller) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{
+                text: "Sen TSA (Turkish Special Army) Discord sunucusunun yardım asistanısın. " +
+                      "Türkçe konuş, askeri ve saygılı bir tonda, kısa ve net cevaplar ver. " +
+                      "TSA kurallarına ve disiplinine uygun davran. Saçma/uygunsuz istekleri nazikçe reddet."
+              }]
+            },
+            contents: [{ role: "user", parts: [{ text: soru }] }],
+            generationConfig: { maxOutputTokens: 300, temperature: 0.7 }
+          })
+        }
+      );
+      if (!res.ok) {
+        sonHata = new Error(`Gemini ${model} yanıt vermedi (${res.status})`);
+        continue; // ikinci modeli dene
+      }
+      const json = await res.json();
+      const metin = json?.candidates?.[0]?.content?.parts?.map(p => p.text).join("") || null;
+      if (metin) return metin.slice(0, 1900);
+    } catch (e) {
+      sonHata = e;
+    }
+  }
+  throw sonHata || new Error("Gemini yanıtı alınamadı");
 }
 
 const SPAM_MESAJ_LIMITI = 5;
@@ -140,6 +218,8 @@ const config = {
   GROUP_ID: process.env.GROUP_ID,
   OYUN_PLACE_ID: process.env.OYUN_PLACE_ID,
   ROBLOX_COOKIE: process.env.ROBLOX_COOKIE,
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+  GEMINI_MODEL: process.env.GEMINI_MODEL,
   DATA_FILE: "./data.json"
 };
 
@@ -212,6 +292,50 @@ setInterval(async () => {
 const EGITIM_ROL_ID = "1518397406578741348";
 const EGITIM_KANAL_ID = "1518357904779116554";
 
+// ============================================================
+// KALICI VERİ DEPOLAMA
+// Render ücretsiz planı diski her dağıtımda/yeniden başlatmada SİLER;
+// bu yüzden /yenile + /doğrula ile bağlanan hesaplar kayboluyordu.
+// Çözüm: ücretsiz Upstash Redis (REST API, ek kütüphane gerekmez).
+//
+// Render > Environment'a ekle (https://console.upstash.com ücretsiz DB):
+//   UPSTASH_REDIS_REST_URL=https://xxxx.upstash.io
+//   UPSTASH_REDIS_REST_TOKEN=xxxx
+// Eklenmezse bot data.json'a yazmaya devam eder (uyarı basar).
+// ============================================================
+const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || "";
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "";
+const UPSTASH_DATA_KEY = "tsa_bot_data_v1";
+
+async function upstashGet() {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return null;
+  try {
+    const res = await fetch(`${UPSTASH_URL}/get/${UPSTASH_DATA_KEY}`, {
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!json || json.result === null) return null;
+    return JSON.parse(json.result);
+  } catch (e) {
+    console.error("⚠️ Upstash okuma hatası:", e.message);
+    return null;
+  }
+}
+
+async function upstashSet(veri) {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
+  try {
+    await fetch(`${UPSTASH_URL}/set/${UPSTASH_DATA_KEY}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify(JSON.stringify(veri))
+    });
+  } catch (e) {
+    console.error("⚠️ Upstash yazma hatası:", e.message);
+  }
+}
+
 let data = { uyari: {}, izin: {}, aktiflik: {}, robloxBaglantilari: {}, dogrulamaKodlari: {} };
 
 if (fs.existsSync(config.DATA_FILE)) {
@@ -224,8 +348,37 @@ if (fs.existsSync(config.DATA_FILE)) {
 if (!data.aktiflik) data.aktiflik = {};
 if (!data.robloxBaglantilari) data.robloxBaglantilari = {};
 if (!data.dogrulamaKodlari) data.dogrulamaKodlari = {};
+if (!data.uyari) data.uyari = {};
+if (!data.izin) data.izin = {};
 
-const saveData = () => fs.writeFileSync(config.DATA_FILE, JSON.stringify(data, null, 2));
+const saveData = () => {
+  fs.writeFileSync(config.DATA_FILE, JSON.stringify(data, null, 2));
+  upstashSet(data).catch(() => {});
+};
+
+// Başlangıçta Upstash'te kayıtlı veri varsa yükle (bağlantılar kalıcı olur).
+(async () => {
+  try {
+    const uzak = await upstashGet();
+    if (uzak && typeof uzak === "object") {
+      data = { ...data, ...uzak };
+      if (!data.aktiflik) data.aktiflik = {};
+      if (!data.robloxBaglantilari) data.robloxBaglantilari = {};
+      if (!data.dogrulamaKodlari) data.dogrulamaKodlari = {};
+      if (!data.uyari) data.uyari = {};
+      if (!data.izin) data.izin = {};
+      const baglantiSayisi = Object.keys(data.robloxBaglantilari).length;
+      console.log(`✅ Upstash kalıcı veri yüklendi (${baglantiSayisi} Roblox bağlantısı korunuyor).`);
+      saveData();
+    } else if (UPSTASH_URL) {
+      console.log("ℹ️ Upstash ayarlı ama kayıt bulunamadı — yeni başlanıyor.");
+    } else {
+      console.log("ℹ️ UPSTASH_REDIS_REST_URL/TOKEN ayarlanmadı — veriler yalnızca data.json'da. Render yeniden dağıtımında /yenile bağlantıları kaybolur!");
+    }
+  } catch (e) {
+    console.error("⚠️ Kalıcı veri yükleme hatası:", e.message);
+  }
+})();
 
 function dogrulamaKoduOlustur() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -718,6 +871,12 @@ client.once("ready", async () => {
     console.error("❌ Slash komutları yüklenirken hata oluştu:", error);
   }
 
+  if (config.GEMINI_API_KEY) {
+    console.log("🤖 Konuşma botu: Gemini yapay zekâ AKTİF (model: " + (config.GEMINI_MODEL || "varsayılan") + ").");
+  } else {
+    console.log("🤖 Konuşma botu: hazır cevaplar modunda — GEMINI_API_KEY eklersen gerçek sohbet eder.");
+  }
+
   if (!config.ROBLOX_COOKIE) {
       console.log("ℹ️ ROBLOX_COOKIE ayarlanmamış. Rütbe komutları çalışmayacaktır.");
   } else if (!robloxGirisYapildi) {
@@ -789,6 +948,28 @@ client.on("messageCreate", async message => {
     return;
   }
 
+  // ===== KONUŞMA BOTU =====
+  // Yalnızca bota hitap edilirse (etiketi, "TSA bot" diye başlayan mesaj
+  // veya botun mesajına yanıt) cevap ver. Artık her mesaja cevap vermez.
+  if (!mesajBotaMiHitapEdiyor(message)) return;
+
+  const sonYanit = sonBotYanitZamani.get(message.author.id) || 0;
+  if (Date.now() - sonYanit < 3000) return; // aynı kullanıcıya 3 sn'de bir
+  sonBotYanitZamani.set(message.author.id, Date.now());
+
+  try {
+    if (config.GEMINI_API_KEY) {
+      const yanit = await geminiYanit(message);
+      if (yanit) {
+        await message.reply(yanit).catch(() => {});
+        return;
+      }
+    }
+  } catch (e) {
+    console.error("🤖 Yapay zekâ yanıt hatası (hazır cevaba düşüldü):", e.message);
+  }
+
+  // Gemini yoksa veya hata verdiyse hazır cevaplara düş.
   const cevap = otoCevapBul(message.content);
   if (cevap) {
     await message.reply(cevap).catch(() => {});
@@ -819,36 +1000,25 @@ client.on("interactionCreate", async interaction => {
     const branşGrupKomutlari = ["brans-istek-kabul-et", "branstan-at", "brans-rutbe-degistir"];
     const rutbeSecmeliKomutlar = ["rutbe-degistir", "brans-rutbe-degistir"];
 
+    // Branş grubu seçimi: artık TÜM gruplar listelenir (yetkiliyse).
+    // Eskiden yalnızca kullanıcının üye olduğu gruplar görünüyordu;
+    // üye olmayan yetkililer boş liste alıp komutu kullanamıyordu.
     if (branşGrupKomutlari.includes(interaction.commandName) && interaction.options.getFocused(true).name === "grup") {
       const yazilan = (interaction.options.getString("grup") || "").toLocaleLowerCase("tr-TR").trim();
 
-      const isBranşYetkiliAutocomplete = interaction.member?.roles.cache.has(config.BRANS_YETKILI_ROL) || interaction.member?.permissions.has(PermissionsBitField.Flags.Administrator);
+      const isBranşYetkiliAutocomplete =
+        interaction.member?.roles.cache.has(config.BRANS_YETKILI_ROL) ||
+        interaction.member?.roles.cache.has(config.YETKILI_ROL) ||
+        interaction.member?.permissions.has(PermissionsBitField.Flags.Administrator);
       if (!isBranşYetkiliAutocomplete) {
         return interaction.respond([]);
       }
 
-      const uyeRobloxId = data.robloxBaglantilari[interaction.user.id];
-      if (!uyeRobloxId || !robloxGirisYapildi) {
-        return interaction.respond([]);
-      }
+      const eslesenler = Object.keys(GRUPLAR)
+        .filter(isim => isim.toLocaleLowerCase("tr-TR").includes(yazilan))
+        .slice(0, 25);
 
-      try {
-        const sonuclar = await Promise.all(
-          Object.entries(GRUPLAR).map(async ([isim, bilgi]) => {
-            const rutbe = await kullaniciGrupRutbesi(uyeRobloxId, bilgi.id);
-            return { isim, yetkiliMi: !!rutbe && rutbe.rank > 1 };
-          })
-        );
-
-        const eslesenler = sonuclar
-          .filter(s => s.yetkiliMi && s.isim.toLocaleLowerCase("tr-TR").includes(yazilan))
-          .slice(0, 25);
-
-        return interaction.respond(eslesenler.map(s => ({ name: s.isim, value: s.isim })));
-      } catch (e) {
-        console.error("Branş grup autocomplete hatası:", e);
-        return interaction.respond([]);
-      }
+      return interaction.respond(eslesenler.map(isim => ({ name: isim, value: isim })));
     }
 
     if (rutbeSecmeliKomutlar.includes(interaction.commandName) && interaction.options.getFocused(true).name === "rutbe") {
@@ -954,7 +1124,10 @@ client.on("interactionCreate", async interaction => {
 
   const cmd = interaction.commandName;
   const isYetkili = interaction.member?.roles.cache.has(config.YETKILI_ROL) || interaction.member?.permissions.has(PermissionsBitField.Flags.Administrator);
-  const isBranşYetkili = interaction.member?.roles.cache.has(config.BRANS_YETKILI_ROL) || interaction.member?.permissions.has(PermissionsBitField.Flags.Administrator);
+  // Branş yetkisi: BRANS_YETKILI_ROL yoksa ana yetkili rolü de kabul edilir.
+  const isBranşYetkili = interaction.member?.roles.cache.has(config.BRANS_YETKILI_ROL) ||
+    interaction.member?.roles.cache.has(config.YETKILI_ROL) ||
+    interaction.member?.permissions.has(PermissionsBitField.Flags.Administrator);
   const isEgitimHost = interaction.member?.roles.cache.has(EGITIM_ROL_ID);
 
   const yetkiliKomutlar = ["kick", "ban", "unban", "temizle", "yavas-mod", "kilitle", "kilit-ac", "rol-ver", "rol-al", "uyari-ver", "uyari-sil", "uyari-liste", "sicil-temizle", "dm-mesaj", "haber-yap", "egitim-duyuru", "duyuru", "aktiflik-denetleme", "rutbe-degistir", "terfi", "tenzil", "dm-duyuru", "cookie-yenile"];
@@ -1307,11 +1480,12 @@ client.on("interactionCreate", async interaction => {
       const yetkiliGrupRutbesi = await kullaniciGrupRutbesi(interactionUserRobloxId, groupId);
       if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= 1) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          `❌ **${grupAdi}** grubunda yetkili değilsiniz veya grupta üye değilsiniz.`
+          `❌ **${grupAdi}** grubunda yetkili değilsiniz veya grupta üye değilsiniz.\n\n` +
+          `Bu komutu kullanabilmek için ilgili branş Roblox grubunda yetkili bir rütbede olmanız gerekir.`
         )] });
       }
 
-      let hedefUye = interaction.options.getMember("kullanici");
+      let hedefUye = interaction.guild.members.cache.get(hedefUser.id);
       if (!hedefUye) {
         try { hedefUye = await interaction.guild.members.fetch(hedefUser.id); } catch { hedefUye = null; }
       }
@@ -1341,6 +1515,14 @@ client.on("interactionCreate", async interaction => {
       const enAltRol = grupRolleri[0];
       if (!enAltRol) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Grupta geçerli bir başlangıç rütbesi bulunamadı.")] });
+      }
+
+      // Yeni üyeye verilecek en alt rütbe, kullanıcının kendi rütbesinden yüksekse Roblox reddeder — önceden yakala.
+      if (enAltRol.rank >= yetkiliGrupRutbesi.rank) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
+          `❌ **${grupAdi}** grubunun en alt rütbesi (**${enAltRol.name}** - Rank ${enAltRol.rank}) sizin rütbenizden (**${yetkiliGrupRutbesi.name}** - Rank ${yetkiliGrupRutbesi.rank}) düşük olmadığı için kabul edilemez.\n\n` +
+          `Bu grupta yetkili bir rütbede olmanız gerekir.`
+        )] });
       }
 
       const botRank = await robloxBotRankiGetir(groupId);
@@ -1423,11 +1605,12 @@ client.on("interactionCreate", async interaction => {
       const yetkiliGrupRutbesi = await kullaniciGrupRutbesi(interactionUserRobloxId, groupId);
       if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= 1) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          `❌ **${grupAdi}** grubunda yetkili değilsiniz veya grupta üye değilsiniz.`
+          `❌ **${grupAdi}** grubunda yetkili değilsiniz veya grupta üye değilsiniz.\n\n` +
+          `Bu komutu kullanabilmek için ilgili branş Roblox grubunda yetkili bir rütbede olmanız gerekir.`
         )] });
       }
 
-      let hedefUye = interaction.options.getMember("kullanici");
+      let hedefUye = interaction.guild.members.cache.get(hedefUser.id);
       if (!hedefUye) {
         try { hedefUye = await interaction.guild.members.fetch(hedefUser.id); } catch { hedefUye = null; }
       }
@@ -1459,6 +1642,8 @@ client.on("interactionCreate", async interaction => {
       }
       if (hedefGrupRutbesi) {
         try { await roblox.exile(groupId, robloxUserId); } catch (e) { hatalar.push(`Roblox gruptan atma hatası: ${e.message}`); }
+      } else {
+        hatalar.push(`${robloxIsim} zaten ${grupAdi} grubunda üye değildi (Roblox tarafı atlanıyor).`);
       }
 
       const embed = new EmbedBuilder()
@@ -1518,7 +1703,8 @@ client.on("interactionCreate", async interaction => {
       const yetkiliGrupRutbesi = await kullaniciGrupRutbesi(interactionUserRobloxId, groupId);
       if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= 1) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          `❌ **${grupAdi}** grubunda yetkili değilsiniz veya grupta üye değilsiniz.`
+          `❌ **${grupAdi}** grubunda yetkili değilsiniz veya grupta üye değilsiniz.\n\n` +
+          `Bu komutu kullanabilmek için ilgili branş Roblox grubunda yetkili bir rütbede olmanız gerekir.`
         )] });
       }
 
@@ -1885,7 +2071,10 @@ client.on("interactionCreate", async interaction => {
       const haberKanal = interaction.guild.channels.cache.get(config.HABER_KANAL);
       if (!haberKanal) return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Haber kanalı bulunamadı.")] });
 
-      await haberKanal.send({ content: `<@&${config.HABER_ROL}>`, embeds: [embed] });
+      // HABER_ROL_ID boşsa etiket gönderme (<@&undefined> hatası olmasın).
+      const etiketIcerik = config.HABER_ROL ? `<@&${config.HABER_ROL}>` : "";
+
+      await haberKanal.send({ content: etiketIcerik, embeds: [embed] });
       await sendLogMessage(interaction.guild, "Haber Yapıldı", `${interaction.user.tag} tarafından haber yapıldı: ${baslik}`, RENK.basari, [
         { name: "Başlık", value: baslik, inline: true },
         { name: "Yetkili", value: `<@${interaction.user.id}>`, inline: true }
@@ -2626,9 +2815,10 @@ process.on("unhandledRejection", (reason) => {
   console.error("Yakalanmamış Promise reddi:", reason);
 });
 
+// NOT: combined.js bu botu market ile AYNI process'te çalıştırır.
+// process.exit(1) yaparsan market de ölür — bu yüzden sadece loglayıp devam ediyoruz.
 process.on("uncaughtException", (error) => {
-  console.error("Yakalanmamış hata:", error.message);
-  process.exit(1);
+  console.error("Yakalanmamış hata:", error);
 });
 
 client.login(config.TOKEN);
