@@ -2,61 +2,48 @@ const roblox = require('./roblox.js');
 require('dotenv').config();
 
 function registerMarketRoutes(app) {
-  let giris = false;
+  let loggedIn = false;
 
   async function login() {
     try {
       await roblox.directLogin(process.env.ROBLOX_COOKIE);
-      giris = true;
-      console.log(`✅ MARKET BOT: ${roblox.botUserName} (${roblox.botUserId}) giriş yapıldı`);
-    } catch (e) {
-      giris = false;
-      console.error('❌ Market cookie hatası:', e.message);
+      loggedIn = true;
+      console.log(`✅ RANK MARKET BOT: ${roblox.botUserName} (${roblox.botUserId}) giriş yaptı`);
+    } catch (error) {
+      loggedIn = false;
+      console.error('❌ Roblox bot girişi başarısız:', error.message);
     }
   }
 
-  login();
+  void login();
   setInterval(login, 30 * 60 * 1000);
 
-  app.get('/market', (_req, res) => res.send('Market Aktif'));
-  app.get('/market-status', (_req, res) => res.json({
-    marketAktif: true,
-    giris,
-    botAd: roblox.botUserName,
-    botId: roblox.botUserId,
-  }));
+  app.get('/market-status', (_req, res) => {
+    res.json({ marketAktif: true, giris: loggedIn, botAd: roblox.botUserName, botId: roblox.botUserId });
+  });
 
   app.post('/setrank', async (req, res) => {
     try {
-      const { key, userId, rank, groupId } = req.body;
       const expectedKey = process.env.MARKET_KEY || 'key43';
-      if (key !== expectedKey) {
-        return res.status(403).json({ error: 'Geçersiz anahtar' });
-      }
-      if (!giris) {
-        return res.status(503).json({ error: 'Roblox girişi yok, cookie kontrol et' });
-      }
+      const userId = Number.parseInt(req.body?.userId, 10);
+      const rank = Number.parseInt(req.body?.rank, 10);
+      const groupId = String(req.body?.groupId || process.env.GROUP_ID || '972348115');
 
-      const gid = String(groupId || process.env.GROUP_ID || '972348115');
-      const u = Number.parseInt(userId, 10);
-      const r = Number.parseInt(rank, 10);
-      // Gerçek Roblox role rank değerleri 1-255 aralığındadır.
-      if (!Number.isInteger(u) || !Number.isInteger(r) || r < 1 || r > 255) {
-        return res.status(400).json({ error: 'Geçersiz userId veya rank' });
-      }
+      if (req.body?.key !== expectedKey) return res.status(403).json({ success: false, error: 'Geçersiz anahtar' });
+      if (!loggedIn) return res.status(503).json({ success: false, error: 'Roblox botu giriş yapmadı' });
+      if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ success: false, error: 'Geçersiz userId' });
+      if (!Number.isInteger(rank) || rank < 1 || rank > 255) return res.status(400).json({ success: false, error: 'Geçersiz rank' });
 
-      console.log(`[MARKET İSTEK] ${u} -> rank ${r} / grup ${gid}`);
-      await roblox.setRank(gid, u, r);
-      console.log(`[MARKET BAŞARILI] ${u} -> rank ${r}`);
-      return res.json({ success: true, userId: u, rank: r, groupId: gid });
-    } catch (e) {
-      console.error('[MARKET HATA]:', e.message);
-      return res.status(500).json({ error: e.message });
+      console.log(`[RANK MARKET] ${userId} -> ${rank} / grup ${groupId}`);
+      await roblox.setRank(groupId, userId, rank);
+      console.log(`[RANK MARKET BAŞARILI] ${userId} -> ${rank}`);
+      return res.json({ success: true, userId, rank, groupId });
+    } catch (error) {
+      console.error('[RANK MARKET HATA]', error.message);
+      return res.status(500).json({ success: false, error: error.message });
     }
   });
 }
 
-// Hem `require('./market.js')(app)` hem de
-// `const { registerMarketRoutes } = require('./market.js')` biçimini destekler.
 module.exports = registerMarketRoutes;
 module.exports.registerMarketRoutes = registerMarketRoutes;
