@@ -41,6 +41,17 @@ function log(...args) {
   console.log(new Date().toISOString(), ...args);
 }
 
+// Zaman aşımı koruması: Roblox API'si (noblox) cevap vermezse istek sonsuza dek
+// beklemesin. Aksi halde /setrank 45 sn+ bekletir, oyunda "bağlantı kurulamadı"
+// hatası görünür ve kuyruk asılı isteğin arkasında KİLİTLENİR.
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(label + ' zaman aşımı (' + Math.floor(ms / 1000) + ' sn)')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 function registerMarketRoutes(app) {
   let loggedIn = false;
   let loginInProgress = false;
@@ -49,7 +60,7 @@ function registerMarketRoutes(app) {
     if (loginInProgress) return; // aynı anda iki giriş başlatma
     loginInProgress = true;
     try {
-      await roblox.directLogin(process.env.ROBLOX_COOKIE);
+      await withTimeout(roblox.directLogin(process.env.ROBLOX_COOKIE), 20000, 'Roblox giriş');
       loggedIn = true;
       log(`✅ RANK MARKET BOT: ${roblox.botUserName} (${roblox.botUserId}) giriş yaptı`);
     } catch (error) {
@@ -94,7 +105,7 @@ function registerMarketRoutes(app) {
     try {
       const result = await enqueue(async () => {
         log(`[RANK MARKET] ${userId} -> ${rank} / grup ${groupId}`);
-        await roblox.setRank(groupId, userId, rank);
+        await withTimeout(roblox.setRank(groupId, userId, rank), 20000, 'Roblox setRank');
         log(`[RANK MARKET BAŞARILI] ${userId} -> ${rank}`);
         return { success: true, userId, rank, groupId };
       });
