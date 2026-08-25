@@ -19,7 +19,7 @@ const RENK = {
   notr: 0x95A5A6
 };
 
-const ROBLOX_GRUP_LINK = "https://www.roblox.com/tr/communities/972348115/TSA-Turkish-Armed-Forces-Yeniden#!/about";
+const ROBLOX_GRUP_LINK = "https://www.roblox.com/tr/communities/697431589/TSA-Turkish-Special-Army-YEN-DEN#!/about";
 
 const GRUPLAR = {
   "Milli İstihbarat Teşkilatı": { id: "460437686", branşRolu: null },
