@@ -224,8 +224,8 @@ const config = {
   GEMINI_MODEL: process.env.GEMINI_MODEL,
   DATA_FILE: "./data.json",
   AUTO_RANK_1_ENABLED: process.env.AUTO_RANK_1_ENABLED !== "false",
-  AUTO_RANK_1_INTERVAL_MS: Math.max(Number(process.env.AUTO_RANK_1_INTERVAL_MS) || 30000, 15000),
-  AUTO_RANK_1_MAX_PAGES: Math.min(Math.max(Number(process.env.AUTO_RANK_1_MAX_PAGES) || 10, 1), 100),
+  AUTO_RANK_1_INTERVAL_MS: Math.max(Number(process.env.AUTO_RANK_1_INTERVAL_MS) || 15000, 10000),
+  AUTO_RANK_1_MAX_PAGES: Math.min(Math.max(Number(process.env.AUTO_RANK_1_MAX_PAGES) || 100, 1), 100),
   RANK_YETKILI_ESIGI: 33
 };
 
@@ -306,9 +306,7 @@ async function rank1RolunuUygula() {
       await new Promise(resolve => setTimeout(resolve, 750));
     }
 
-    if (duzeltilen > 0) {
-      console.log(`✅ Otomatik Rank 1 taraması tamamlandı: ${duzeltilen} üye [OR-1] Acemi Er rütbesine alındı.`);
-    }
+    console.log(`ℹ️ Otomatik Rank 1 taraması tamamlandı: ${uyeler.length} üye kontrol edildi, ${duzeltilen} üye [OR-1] Acemi Er rütbesine alındı.`);
   } catch (e) {
     console.error('⚠️ Otomatik Rank 1 taraması başarısız:', e.message);
   } finally {
@@ -948,8 +946,20 @@ client.once("ready", async () => {
   }
 
   if (config.AUTO_RANK_1_ENABLED && config.ROBLOX_COOKIE && config.GROUP_ID) {
-    setTimeout(rank1RolunuUygula, 3000);
-    setInterval(rank1RolunuUygula, config.AUTO_RANK_1_INTERVAL_MS);
+    const otomatikRankDongusu = async () => {
+      try {
+        // Başlangıçta veya cookie geçici olarak bozulduğunda döngü durmasın;
+        // her kontrolde oturumu yeniden kurmayı dene.
+        if (!robloxGirisYapildi) {
+          await robloxGirisYap(config.ROBLOX_COOKIE);
+        }
+        if (robloxGirisYapildi) await rank1RolunuUygula();
+      } catch (e) {
+        console.error("⚠️ Otomatik Rank 1 döngüsü hatası:", e.message);
+      }
+    };
+    setTimeout(otomatikRankDongusu, 3000);
+    setInterval(otomatikRankDongusu, config.AUTO_RANK_1_INTERVAL_MS);
     console.log(`✅ Otomatik Rank 1 sistemi aktif (kontrol: ${config.AUTO_RANK_1_INTERVAL_MS / 1000}s).`);
   }
 
