@@ -162,6 +162,23 @@ async function setRank(groupId, userId, rank) {
   return true;
 }
 
+
+// ---- Belirli roleId'ye cookie ile rütbe atama ----
+// Aynı rank değerine sahip birden fazla rol olabileceği için
+// otomatik Rank 1 sistemi bu fonksiyonda gerçek roleId kullanır.
+async function setRoleId(groupId, userId, roleId) {
+  const res = await robloxFetch(`https://groups.roblox.com/v1/groups/${groupId}/users/${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ roleId: Number(roleId) })
+  });
+  if (!res.ok) {
+    const govde = await res.text().catch(() => "");
+    throw new Error(`Belirtilen Roblox rolü atanamadı: ${res.status} ${govde}`);
+  }
+  return true;
+}
+
 // ---- Gruptan atma ----
 async function exile(groupId, userId) {
   const res = await robloxFetch(`https://groups.roblox.com/v1/groups/${groupId}/users/${userId}`, {
@@ -218,6 +235,7 @@ module.exports = {
   setRank,
   exile,
   getGroupMembers,
+  setRoleId,
   isProxyMode,
   get botUserId() {
     return botUserId;
