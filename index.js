@@ -215,12 +215,18 @@ const config = {
   ASKERI_PERSONEL_ROL: process.env.ASKERI_PERSONEL_ROL_ID,
   BRANS_YETKILI_ROL: process.env.BRANS_YETKILI_ROL_ID,
   ROWIFI_ROL: process.env.ROWIFI_ROL_ID,
+  ROWIFI_IP_TOKEN: process.env.ROWIFI_IP_TOKEN,
+  ROWIFI_GUILD_ID: process.env.ROWIFI_GUILD_ID,
   GROUP_ID: process.env.GROUP_ID,
   OYUN_PLACE_ID: process.env.OYUN_PLACE_ID,
   ROBLOX_COOKIE: process.env.ROBLOX_COOKIE,
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   GEMINI_MODEL: process.env.GEMINI_MODEL,
-  DATA_FILE: "./data.json"
+  DATA_FILE: "./data.json",
+  AUTO_RANK_1_ENABLED: process.env.AUTO_RANK_1_ENABLED !== "false",
+  AUTO_RANK_1_INTERVAL_MS: Math.max(Number(process.env.AUTO_RANK_1_INTERVAL_MS) || 30000, 15000),
+  AUTO_RANK_1_MAX_PAGES: Math.min(Math.max(Number(process.env.AUTO_RANK_1_MAX_PAGES) || 10, 1), 100),
+  RANK_YETKILI_ESIGI: 33
 };
 
 let robloxGirisYapildi = false;
@@ -259,6 +265,50 @@ async function robloxBotRankiGetir(groupId) {
   } catch (e) {
     console.error("Bot rütbesi alınırken hata:", e);
     return null;
+  }
+}
+
+
+let autoRankCalisiyor = false;
+
+async function rank1RolunuUygula() {
+  if (!config.AUTO_RANK_1_ENABLED || !config.ROBLOX_COOKIE || !config.GROUP_ID) return;
+  if (!robloxGirisYapildi || autoRankCalisiyor) return;
+
+  autoRankCalisiyor = true;
+  try {
+    const roller = await getRobloxGroupRoles(config.GROUP_ID);
+    const rank1 = roller.find(r => Number(r.rank) === 1);
+    if (!rank1) throw new Error('Ana grupta Rank ID 1 rolü bulunamadı.');
+
+    const botRank = await robloxBotRankiGetir(config.GROUP_ID);
+    if (botRank !== null && botRank <= 1) {
+      throw new Error(`Botun grup rütbesi Rank ${botRank}; Rank 1 atamak için botun daha yüksek rütbede olması gerekir.`);
+    }
+
+    const uyeler = await roblox.getGroupMembers(config.GROUP_ID, {
+      maxPages: config.AUTO_RANK_1_MAX_PAGES
+    });
+    let duzeltilen = 0;
+
+    for (const uye of uyeler) {
+      const userId = uye?.user?.userId ?? uye?.user?.id ?? uye?.id;
+      const mevcutRank = Number(uye?.role?.rank ?? uye?.rank ?? 0);
+      if (!userId || mevcutRank >= 1) continue;
+      // Rank 2+ üyeler hiçbir koşulda hedeflenmez.
+      if (mevcutRank >= 2) continue;
+      await roblox.setRank(config.GROUP_ID, userId, 1);
+      duzeltilen += 1;
+      await new Promise(resolve => setTimeout(resolve, 750));
+    }
+
+    if (duzeltilen > 0) {
+      console.log(`✅ Otomatik Rank 1 taraması tamamlandı: ${duzeltilen} üye [OR-1] Acemi Er rütbesine alındı.`);
+    }
+  } catch (e) {
+    console.error('⚠️ Otomatik Rank 1 taraması başarısız:', e.message);
+  } finally {
+    autoRankCalisiyor = false;
   }
 }
 
@@ -628,11 +678,32 @@ async function kullaniciGruptaYetkiliMi(robloxUserId, grupId) {
   try {
     const groupRole = await kullaniciGrupRutbesi(robloxUserId, grupId);
     if (!groupRole) return false;
-    return groupRole.rank > 1;
+    return groupRole.rank > config.RANK_YETKILI_ESIGI;
   } catch (e) {
     console.error("Grup yetki kontrolü hatası:", e);
     return false;
   }
+}
+
+
+async function rowifiBagliRobloxIdGetir(discordId, guildId) {
+  const token = String(config.ROWIFI_IP_TOKEN || '').trim();
+  const rowifiGuildId = String(guildId || config.ROWIFI_GUILD_ID || '').trim();
+  if (!token || !rowifiGuildId) {
+    throw new Error('ROWIFI_IP_TOKEN veya ROWIFI_GUILD_ID ayarlanmamış.');
+  }
+
+  const res = await fetch(`https://api.rowifi.xyz/v3/guilds/${rowifiGuildId}/members/${discordId}`, {
+    headers: { Authorization: `Bot ${token}`, Accept: 'application/json' }
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Rowifi üye sorgusu başarısız: ${res.status} ${body}`);
+  }
+  const json = await res.json();
+  const id = json?.roblox_id ?? json?.robloxId ?? json?.user_id;
+  return id ? String(id) : null;
 }
 
 const client = new Client({
@@ -744,13 +815,7 @@ const commands = [
     .setDescription("Bir kullanıcıyı ana Roblox grubunda bir alt rütbeye tenzil eder (indirir).")
     .addStringOption(o => o.setName("roblox_isim").setDescription("Roblox kullanıcı adı").setRequired(true))
     .addStringOption(o => o.setName("sebep").setDescription("Tenzil sebebi").setRequired(true)),
-  new SlashCommandBuilder()
-    .setName("yenile")
-    .setDescription("Discord hesabınızı Roblox hesabınıza RoWiFi üzerinden bağlar veya günceller."),
-  new SlashCommandBuilder()
-    .setName("dogrula")
-    .setDescription("Roblox hesabınızı doğrulamak için kod girin.")
-    .addStringOption(o => o.setName("kod").setDescription("Roblox profilinizdeki doğrulama kodu").setRequired(true)),
+  new SlashCommandBuilder().setName("dogrula").setDescription("Rowifi bağlantınızı kontrol eder ve Roblox rankınızı doğrular."),
   new SlashCommandBuilder()
     .setName("dm-duyuru")
     .setDescription("Belirtilen roldeki kullanıcılara özel mesaj duyurusu gönderir.")
@@ -875,6 +940,12 @@ client.once("ready", async () => {
     console.log("🤖 Konuşma botu: Gemini yapay zekâ AKTİF (model: " + (config.GEMINI_MODEL || "varsayılan") + ").");
   } else {
     console.log("🤖 Konuşma botu: hazır cevaplar modunda — GEMINI_API_KEY eklersen gerçek sohbet eder.");
+  }
+
+  if (config.AUTO_RANK_1_ENABLED && config.ROBLOX_COOKIE && config.GROUP_ID) {
+    setTimeout(rank1RolunuUygula, 3000);
+    setInterval(rank1RolunuUygula, config.AUTO_RANK_1_INTERVAL_MS);
+    console.log(`✅ Otomatik Rank 1 sistemi aktif (kontrol: ${config.AUTO_RANK_1_INTERVAL_MS / 1000}s).`);
   }
 
   if (!config.ROBLOX_COOKIE) {
@@ -1227,77 +1298,34 @@ client.on("interactionCreate", async interaction => {
 
     if (cmd === "dogrula") {
       await interaction.deferReply({ ephemeral: true });
-
-      const girilenKod = interaction.options.getString("kod")?.trim();
-      const kayit = data.dogrulamaKodlari[interaction.user.id];
-
-      if (!kayit) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          "❌ Aktif bir doğrulama kaydınız yok. Önce `/yenile` komutunu kullanın."
-        )] });
-      }
-
-      if (!girilenKod || girilenKod !== kayit.kod) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          "❌ Girdiğiniz doğrulama kodu yanlış. `/yenile` ile verilen kodu aynen girin."
-        )] });
-      }
-
-      if (Date.now() > kayit.bitis) {
-        dogrulamaKaydiniTemizle(interaction.user.id);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          "❌ Doğrulama kodunuzun süresi dolmuş. Lütfen tekrar `/yenile` kullanın."
-        )] });
-      }
-
       try {
-        const robloxDetail = await getRobloxUserDetail(kayit.robloxUserId);
-        const profilAciklamasi = robloxDetail.description || "";
-
-        if (!profilAciklamasi.includes(kayit.kod)) {
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-            `❌ Roblox profil açıklamasında \`${kayit.kod}\` kodu bulunamadı.\n\n` +
-            `Kodu profil açıklamanıza ekleyin, kaydedin ve birkaç saniye sonra tekrar deneyin.`
+        const robloxId = await rowifiBagliRobloxIdGetir(interaction.user.id, interaction.guild.id);
+        if (!robloxId) {
+          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setTitle("❌ Rowifi Bağlantısı Bulunamadı").setDescription(
+            "Discord hesabınız Rowifi üzerinden bir Roblox hesabına bağlı görünmüyor. Önce sunucudaki Rowifi `/verify` komutunu tamamlayın; ardından bu komutu tekrar kullanın."
           )] });
         }
 
-        const baskasiKullaniyor = Object.entries(data.robloxBaglantilari).find(([discordId, robloxId]) => discordId !== interaction.user.id && robloxId === kayit.robloxUserId);
-        if (baskasiKullaniyor) {
-          dogrulamaKaydiniTemizle(interaction.user.id);
-          return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-            `❌ Bu Roblox hesabı (**${kayit.robloxUsername}**) başka bir Discord kullanıcısı tarafından zaten bağlanmış.`
-          )] });
-        }
-
-        const mevcutBaglanti = data.robloxBaglantilari[interaction.user.id];
-        data.robloxBaglantilari[interaction.user.id] = kayit.robloxUserId;
-        delete data.dogrulamaKodlari[interaction.user.id];
-        saveData();
-
+        const grupRutbesi = await kullaniciGrupRutbesi(robloxId, config.GROUP_ID);
+        const rank = Number(grupRutbesi?.rank || 0);
+        const yetkili = rank > config.RANK_YETKILI_ESIGI;
         const embed = new EmbedBuilder()
-          .setColor(RENK.basari)
-          .setTitle("✅ Roblox Hesabı Başarıyla Bağlandı")
-          .setDescription(
-            `Discord hesabınız Roblox hesabı **${kayit.robloxUsername}** (${kayit.robloxUserId}) ile başarıyla doğrulandı ve bağlandı.\n\n` +
-            `Artık rütbe ve branş komutlarını kullanabilirsiniz.`
-          )
+          .setColor(yetkili ? RENK.basari : RENK.uyari)
+          .setTitle(yetkili ? "✅ Rowifi Doğrulaması Başarılı" : "⚠️ Rowifi Bağlantısı Bulundu")
+          .setDescription(yetkili
+            ? "Roblox hesabınız Rowifi üzerinden doğrulandı. Rank 33 üstü olduğunuz için rütbe komutlarına erişebilirsiniz."
+            : "Roblox hesabınız Rowifi üzerinden bulundu; ancak rütbe komutları için ana grupta Rank 33 üstünde olmanız gerekir.")
           .addFields(
-            { name: "👤 Roblox Kullanıcı", value: kayit.robloxUsername, inline: true },
-            { name: "🆔 Roblox ID", value: kayit.robloxUserId.toString(), inline: true }
+            { name: "🆔 Roblox ID", value: String(robloxId), inline: true },
+            { name: "🏅 Ana Grup Rütbesi", value: grupRutbesi ? `${grupRutbesi.name} — Rank ${rank}` : "Grupta değil / Rank 0", inline: true },
+            { name: "🔐 Rütbe Yetkisi", value: yetkili ? "Açık" : "Kapalı", inline: true }
           )
-          .setFooter({ text: "TSA Discord Bot - Profil Doğrulaması" })
+          .setFooter({ text: "TSA Bot • Rowifi doğrulaması" })
           .setTimestamp();
-
-        if (mevcutBaglanti && mevcutBaglanti !== kayit.robloxUserId) {
-          embed.addFields({ name: "📝 Not", value: `Eski bağlantınız (ID: ${mevcutBaglanti}) güncellendi.`, inline: false });
-        }
-
         return interaction.editReply({ embeds: [embed] });
       } catch (e) {
-        console.error("Doğrulama kontrol hatası:", e);
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          "❌ Roblox profil doğrulaması yapılırken bir hata oluştu. Birkaç saniye sonra tekrar deneyin."
-        )] });
+        console.error("Rowifi doğrulama hatası:", e);
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ Rowifi doğrulaması yapılamadı: ${e.message}`)] });
       }
     }
 
@@ -1327,16 +1355,13 @@ client.on("interactionCreate", async interaction => {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(hataMesaji)] });
       }
 
-      const interactionUserRobloxId = data.robloxBaglantilari[interaction.user.id];
+      const interactionUserRobloxId = await rowifiBagliRobloxIdGetir(interaction.user.id, interaction.guild.id);
       if (!interactionUserRobloxId) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          "❌ Önce `/yenile` komutu ile **Discord hesabınızı Roblox hesabınıza bağlamanız** gerekiyor.\n\n" +
-          "Rütbe değiştirme yetkinizi doğrulayabilmem için bu zorunludur."
-        )] });
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Önce sunucudaki Rowifi `/verify` komutuyla Roblox hesabınızı bağlamanız gerekiyor.")] });
       }
 
       const yetkiliGrupRutbesi = await kullaniciGrupRutbesi(interactionUserRobloxId, groupId);
-      if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= 1) {
+      if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= config.RANK_YETKILI_ESIGI) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
           `❌ **${grupAdi}** grubunda yetkili değilsiniz veya grupta üye değilsiniz.\n\n` +
           `Bu komut yalnızca yetkili olduğunuz grupta ve kendi rütbenizin altındaki kullanıcılarda işlem yapabilir.`
@@ -1470,15 +1495,13 @@ client.on("interactionCreate", async interaction => {
 
       const groupId = GRUPLAR[grupAdi].id;
 
-      const interactionUserRobloxId = data.robloxBaglantilari[interaction.user.id];
+      const interactionUserRobloxId = await rowifiBagliRobloxIdGetir(interaction.user.id, interaction.guild.id);
       if (!interactionUserRobloxId) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          "❌ Önce `/yenile` komutu ile **Discord hesabınızı Roblox hesabınıza bağlamanız** gerekiyor."
-        )] });
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Önce sunucudaki Rowifi `/verify` komutuyla Roblox hesabınızı bağlamanız gerekiyor.")] });
       }
 
       const yetkiliGrupRutbesi = await kullaniciGrupRutbesi(interactionUserRobloxId, groupId);
-      if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= 1) {
+      if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= config.RANK_YETKILI_ESIGI) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
           `❌ **${grupAdi}** grubunda yetkili değilsiniz veya grupta üye değilsiniz.\n\n` +
           `Bu komutu kullanabilmek için ilgili branş Roblox grubunda yetkili bir rütbede olmanız gerekir.`
@@ -1595,15 +1618,13 @@ client.on("interactionCreate", async interaction => {
 
       const groupId = GRUPLAR[grupAdi].id;
 
-      const interactionUserRobloxId = data.robloxBaglantilari[interaction.user.id];
+      const interactionUserRobloxId = await rowifiBagliRobloxIdGetir(interaction.user.id, interaction.guild.id);
       if (!interactionUserRobloxId) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          "❌ Önce `/yenile` komutu ile **Discord hesabınızı Roblox hesabınıza bağlamanız** gerekiyor."
-        )] });
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Önce sunucudaki Rowifi `/verify` komutuyla Roblox hesabınızı bağlamanız gerekiyor.")] });
       }
 
       const yetkiliGrupRutbesi = await kullaniciGrupRutbesi(interactionUserRobloxId, groupId);
-      if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= 1) {
+      if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= config.RANK_YETKILI_ESIGI) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
           `❌ **${grupAdi}** grubunda yetkili değilsiniz veya grupta üye değilsiniz.\n\n` +
           `Bu komutu kullanabilmek için ilgili branş Roblox grubunda yetkili bir rütbede olmanız gerekir.`
@@ -1693,15 +1714,13 @@ client.on("interactionCreate", async interaction => {
 
       const groupId = GRUPLAR[grupAdi].id;
 
-      const interactionUserRobloxId = data.robloxBaglantilari[interaction.user.id];
+      const interactionUserRobloxId = await rowifiBagliRobloxIdGetir(interaction.user.id, interaction.guild.id);
       if (!interactionUserRobloxId) {
-        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
-          "❌ Önce `/yenile` komutu ile **Discord hesabınızı Roblox hesabınıza bağlamanız** gerekiyor."
-        )] });
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Önce sunucudaki Rowifi `/verify` komutuyla Roblox hesabınızı bağlamanız gerekiyor.")] });
       }
 
       const yetkiliGrupRutbesi = await kullaniciGrupRutbesi(interactionUserRobloxId, groupId);
-      if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= 1) {
+      if (!yetkiliGrupRutbesi || yetkiliGrupRutbesi.rank <= config.RANK_YETKILI_ESIGI) {
         return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
           `❌ **${grupAdi}** grubunda yetkili değilsiniz veya grupta üye değilsiniz.\n\n` +
           `Bu komutu kullanabilmek için ilgili branş Roblox grubunda yetkili bir rütbede olmanız gerekir.`
@@ -1823,7 +1842,7 @@ client.on("interactionCreate", async interaction => {
         { name: "Sebep", value: sebep, inline: true },
         { name: "Yetkili", value: `<@${interaction.user.id}>`, inline: true }
       ]);
-      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`✅ **${user.tag}** başarıyla sunucudan yasaklandı.`)] });
+      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`✅ **${user.tag}** başarıyla sunucudan yasaklandı.\n\n**Sebep:** ${sebep}`)] });
     }
 
     if (cmd === "unban") {
