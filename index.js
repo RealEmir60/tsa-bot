@@ -215,8 +215,8 @@ const config = {
   ASKERI_PERSONEL_ROL: process.env.ASKERI_PERSONEL_ROL_ID,
   BRANS_YETKILI_ROL: process.env.BRANS_YETKILI_ROL_ID,
   ROWIFI_ROL: process.env.ROWIFI_ROL_ID,
-  ROWIFI_IP_TOKEN: process.env.ROWIFI_IP_TOKEN,
-  ROWIFI_GUILD_ID: process.env.ROWIFI_GUILD_ID,
+  ROWIFI_IP_TOKEN: process.env.ROWIFI_IP_TOKEN || process.env.ROWIFI_API_TOKEN || process.env.ROWIFI_TOKEN,
+  ROWIFI_GUILD_ID: process.env.ROWIFI_GUILD_ID || process.env.DISCORD_GUILD_ID,
   GROUP_ID: process.env.GROUP_ID,
   OYUN_PLACE_ID: process.env.OYUN_PLACE_ID,
   ROBLOX_COOKIE: process.env.ROBLOX_COOKIE,
@@ -692,6 +692,7 @@ async function kullaniciGruptaYetkiliMi(robloxUserId, grupId) {
 
 async function rowifiBagliRobloxIdGetir(discordId, guildId) {
   const token = String(config.ROWIFI_IP_TOKEN || '').trim();
+  // Rowifi için Discord sunucusunun ID'si gerekir. Komut sunucusunun ID'si önceliklidir.
   const rowifiGuildId = String(guildId || config.ROWIFI_GUILD_ID || '').trim();
   if (!token || !rowifiGuildId) {
     throw new Error('ROWIFI_IP_TOKEN veya ROWIFI_GUILD_ID ayarlanmamış.');
@@ -1129,7 +1130,7 @@ client.on("interactionCreate", async interaction => {
     if (interaction.customId === "robloxprofil_prev" || interaction.customId === "robloxprofil_next") {
       const cache = robloxProfilCache.get(interaction.message.id);
       if (!cache) {
-        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("⏱️ Bu profil görüntüleyicisinin süresi doldu, komutu tekrar çalıştır.")], ephemeral: true });
+        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("⏱️ Bu profil görüntüleyicisinin süresi doldu, komutu tekrar çalıştır.")], ephemeral: false });
       }
       const yeniSayfa = cache.sayfa + (interaction.customId === "robloxprofil_next" ? 1 : -1);
       const { embed, butonlar, sayfa } = robloxProfilSayfasiOlustur(cache.veri, yeniSayfa);
@@ -1147,14 +1148,14 @@ client.on("interactionCreate", async interaction => {
       try {
         const robloxUser = await getRobloxUserByUsername(robloxUsername);
         if (!robloxUser) {
-          return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxUsername}** adında bir Roblox kullanıcısı bulunamadı.`)], ephemeral: true });
+          return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(`❌ **${robloxUsername}** adında bir Roblox kullanıcısı bulunamadı.`)], ephemeral: false });
         }
 
         const baskasiKullaniyor = Object.entries(data.robloxBaglantilari).find(([discordId, robloxId]) => discordId !== interaction.user.id && robloxId === robloxUser.id);
         if (baskasiKullaniyor) {
           return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription(
             `❌ Bu Roblox hesabı (**${robloxUser.name}**) başka bir Discord kullanıcısı tarafından zaten bağlanmış.`
-          )], ephemeral: true });
+          )], ephemeral: false });
         }
 
         const kod = aktifDogrulamaKoduUret();
@@ -1186,10 +1187,10 @@ client.on("interactionCreate", async interaction => {
           .setFooter({ text: "TSA Discord Bot - Profil Açıklaması Doğrulaması" })
           .setTimestamp();
 
-        return interaction.reply({ embeds: [embed], ephemeral: true });
+        return interaction.reply({ embeds: [embed], ephemeral: false });
       } catch (e) {
         console.error("Roblox doğrulama modal hatası:", e);
-        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox doğrulama başlatılırken bir hata oluştu. Lütfen tekrar deneyin.")], ephemeral: true });
+        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox doğrulama başlatılırken bir hata oluştu. Lütfen tekrar deneyin.")], ephemeral: false });
       }
     }
     return;
@@ -1209,11 +1210,11 @@ client.on("interactionCreate", async interaction => {
   const branşKomutlar = ["brans-istek-kabul-et", "branstan-at", "brans-rutbe-degistir"];
 
   if (yetkiliKomutlar.includes(cmd) && !isYetkili) {
-    return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bu komutu kullanmak için yeterli yetkiniz yok!")], ephemeral: true });
+    return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bu komutu kullanmak için yeterli yetkiniz yok!")], ephemeral: false });
   }
 
   if (branşKomutlar.includes(cmd) && !isBranşYetkili) {
-    return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Branş Rütbe Yetkiniz yok!")], ephemeral: true });
+    return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Branş Rütbe Yetkiniz yok!")], ephemeral: false });
   }
 
   try {
@@ -1235,7 +1236,7 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (cmd === "yardim") {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply();
       const yetkiliKomutlarListe = ["kick", "ban", "unban", "temizle", "yavas-mod", "kilitle", "kilit-ac", "rol-ver", "rol-al", "uyari-ver", "uyari-sil", "uyari-liste", "sicil-temizle", "dm-mesaj", "haber-yap", "egitim-duyuru", "duyuru", "aktiflik-denetleme", "rutbe-degistir", "terfi", "tenzil", "dm-duyuru", "cookie-yenile"];
 
       const chunkList = (items) => {
@@ -1296,12 +1297,12 @@ client.on("interactionCreate", async interaction => {
         return interaction.showModal(modal);
       } catch (e) {
         console.error("Yenile doğrulama hatası:", e);
-        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox doğrulama penceresi açılırken bir hata oluştu. Lütfen tekrar deneyin.")], ephemeral: true });
+        return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Roblox doğrulama penceresi açılırken bir hata oluştu. Lütfen tekrar deneyin.")], ephemeral: false });
       }
     }
 
     if (cmd === "dogrula") {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply();
       try {
         const robloxId = await rowifiBagliRobloxIdGetir(interaction.user.id, interaction.guild.id);
         if (!robloxId) {
@@ -1868,7 +1869,7 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (cmd === "temizle") {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply();
       const sayi = interaction.options.getInteger("sayi");
 
       if (sayi < 1 || sayi > 100) {
@@ -2158,7 +2159,7 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (cmd === "dm-duyuru") {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply();
       const hedefRol = interaction.options.getRole("hedef_rol");
       const mesajIcerigi = interaction.options.getString("mesaj_icerigi");
 
@@ -2515,7 +2516,7 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (cmd === "cookie-durum") {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply();
       let durumMesaji;
       if (!robloxGirisYapildi) {
         durumMesaji = "❌ Roblox cookie'si geçerli değil veya süresi dolmuş. Lütfen `/cookie-yenile` komutu ile güncelleyin.";
@@ -2532,7 +2533,7 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (cmd === "cookie-yenile") {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply();
       const yeniCookie = interaction.options.getString("yeni_cookie");
       console.log("Yeni cookie ile giriş deneniyor...");
 
@@ -2816,7 +2817,7 @@ client.on("interactionCreate", async interaction => {
       return interaction.editReply({ embeds: [embed] });
     }
 
-    return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bu komutun işleyicisi bulunamadı.")], ephemeral: true });
+    return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Bu komutun işleyicisi bulunamadı.")], ephemeral: false });
 
   } catch (error) {
     console.error("interactionCreate hatası:", error);
@@ -2824,7 +2825,7 @@ client.on("interactionCreate", async interaction => {
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply({ embeds: [hataEmbed] }).catch(() => {});
     } else {
-      await interaction.reply({ embeds: [hataEmbed], ephemeral: true }).catch(() => {});
+      await interaction.reply({ embeds: [hataEmbed], ephemeral: false }).catch(() => {});
     }
   }
 });
