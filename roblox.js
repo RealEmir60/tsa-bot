@@ -175,6 +175,40 @@ async function exile(groupId, userId) {
   return true;
 }
 
+
+// ---- Gruptaki üyeleri listeleme (cookie ile) ----
+// Not: Roblox yalnızca gerçekten gruba dahil olmuş üyeleri döndürür.
+// Rank 0/Guest hesaplar API tarafından döndürülmüyorsa bu kişiler
+// Roblox tarafında henüz üye kabul edilmemiş demektir ve rank atanamaz.
+async function getGroupMembers(groupId, options = {}) {
+  const limit = Math.min(Math.max(Number(options.limit) || 100, 10), 100);
+  const maxPages = Math.min(Math.max(Number(options.maxPages) || 10, 1), 100);
+  const members = [];
+  let cursor = '';
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const params = new URLSearchParams({
+      sortOrder: 'Asc',
+      limit: String(limit)
+    });
+    if (cursor) params.set('cursor', cursor);
+
+    const res = await robloxFetch(
+      `https://groups.roblox.com/v1/groups/${groupId}/users?${params.toString()}`
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Grup üyeleri alınamadı: ${res.status} ${body}`);
+    }
+
+    const json = await res.json();
+    members.push(...(json.data || []));
+    cursor = json.nextPageCursor || '';
+    if (!cursor) break;
+  }
+  return members;
+}
+
 module.exports = {
   directLogin,
   getIdFromUsername,
@@ -183,6 +217,7 @@ module.exports = {
   getBotRank,
   setRank,
   exile,
+  getGroupMembers,
   isProxyMode,
   get botUserId() {
     return botUserId;
