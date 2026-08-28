@@ -278,8 +278,11 @@ async function rank1RolunuUygula() {
   autoRankCalisiyor = true;
   try {
     const roller = await getRobloxGroupRoles(config.GROUP_ID);
-    const rank1 = roller.find(r => Number(r.rank) === 1);
-    if (!rank1) throw new Error('Ana grupta Rank ID 1 rolü bulunamadı.');
+    const rank1 = roller.find(r =>
+      Number(r.rank) === 1 &&
+      String(r.name || '').trim().toLocaleLowerCase('tr-TR') === '[or-1] acemi er'
+    );
+    if (!rank1) throw new Error('Ana grupta adı tam olarak [OR-1] Acemi Er olan Rank ID 1 rolü bulunamadı.');
 
     const botRank = await robloxBotRankiGetir(config.GROUP_ID);
     if (botRank !== null && botRank <= 1) {
@@ -294,10 +297,11 @@ async function rank1RolunuUygula() {
     for (const uye of uyeler) {
       const userId = uye?.user?.userId ?? uye?.user?.id ?? uye?.id;
       const mevcutRank = Number(uye?.role?.rank ?? uye?.rank ?? 0);
-      if (!userId || mevcutRank >= 1) continue;
-      // Rank 2+ üyeler hiçbir koşulda hedeflenmez.
-      if (mevcutRank >= 2) continue;
-      await roblox.setRank(config.GROUP_ID, userId, 1);
+      const mevcutRoleId = String(uye?.role?.id ?? uye?.roleId ?? '');
+      if (!userId || mevcutRank >= 2) continue;
+      // Rank 0 ve yanlış Rank 1 rolü hedeflenir; Rank 2+ kesinlikle atlanır.
+      if (mevcutRoleId === String(rank1.id)) continue;
+      await roblox.setRoleId(config.GROUP_ID, userId, rank1.id);
       duzeltilen += 1;
       await new Promise(resolve => setTimeout(resolve, 750));
     }
