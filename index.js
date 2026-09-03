@@ -226,7 +226,9 @@ const config = {
   AUTO_RANK_1_ENABLED: process.env.AUTO_RANK_1_ENABLED !== "false",
   AUTO_RANK_1_INTERVAL_MS: Math.max(Number(process.env.AUTO_RANK_1_INTERVAL_MS) || 15000, 10000),
   AUTO_RANK_1_MAX_PAGES: Math.min(Math.max(Number(process.env.AUTO_RANK_1_MAX_PAGES) || 100, 1), 100),
-  RANK_YETKILI_ESIGI: 33
+  RANK_YETKILI_ESIGI: 33,
+  SECURITY_MAX_DM_LENGTH: Math.min(Math.max(Number(process.env.SECURITY_MAX_DM_LENGTH) || 1800, 100), 1900),
+  SECURITY_BAN_DM_ENABLED: process.env.SECURITY_BAN_DM_ENABLED !== "false"
 };
 
 let robloxGirisYapildi = false;
@@ -707,6 +709,36 @@ async function rowifiBagliRobloxIdGetir(discordId, guildId) {
   const json = await res.json();
   const id = json?.roblox_id ?? json?.robloxId ?? json?.user_id;
   return id ? String(id) : null;
+}
+
+function hasRole(member, roleId) { return Boolean(roleId && member?.roles?.cache?.has(String(roleId))); }
+function isConfiguredAuthorized(member) { return hasRole(member, config.YETKILI_ROL); }
+function safeText(value, max=1000) { return String(value || "Belirtilmedi").slice(0, max); }
+function moderationTargetError(interaction, member) {
+  if (!member) return "Kullanıcı bulunamadı.";
+  if (member.id === interaction.user.id) return "Kendinizi hedef alan bu işlemi yapamazsınız.";
+  if (member.id === config.BOT_SAHIBI || member.id === interaction.guild.ownerId) return "Bot sahibi veya sunucu sahibi hedef alınamaz.";
+  if (interaction.guild.ownerId !== interaction.user.id && member.roles.highest.position >= interaction.member.roles.highest.position) return "Rol hiyerarşisi nedeniyle kendi seviyenizde veya üstünüzdeki kullanıcıya işlem yapamazsınız.";
+  return null;
+}
+async function sendBanDM(user, guild, moderator, reason) {
+  if (!config.SECURITY_BAN_DM_ENABLED) return false;
+  const embed = tsaEmbed(RENK.hata, guild).setTitle("🚫 Sunucudan Yasaklandınız")
+    .setDescription(`**${guild.name}** sunucusundan yasaklandınız.`)
+    .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 256 }))
+    .addFields(
+      { name: "👤 Kullanıcı", value: `${user.tag} (${user.id})`, inline: false },
+      { name: "📝 Ban Sebebi", value: safeText(reason, 900), inline: false },
+      { name: "👮 İşlemi Yapan", value: `${moderator.tag} (${moderator.id})`, inline: false },
+      { name: "🕒 İşlem Zamanı", value: `<t:${Math.floor(Date.now()/1000)}:F>`, inline: false }
+    ).setFooter({ text: "TSA Güvenlik Sistemi" });
+  try { await user.send({ embeds: [embed] }); return true; }
+  catch (e) { console.warn(`Ban DM'i gönderilemedi (${user.tag}):`, e.message); return false; }
+}
+async function addRobloxAvatar(embed, userId) {
+  try { const url = await getRobloxAvatarUrl(userId); if (url) embed.setThumbnail(url); }
+  catch (e) { console.warn("Roblox avatarı alınamadı:", e.message); }
+  return embed;
 }
 
 const client = new Client({
@@ -1226,6 +1258,10 @@ client.on("interactionCreate", async interaction => {
   if (branşKomutlar.includes(cmd) && !isBranşYetkili) {
     return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("❌ Branş Rütbe Yetkiniz yok!")], ephemeral: false });
   }
+  // /dm-mesaj için Administrator tek başına yeterli değildir; .env rolü zorunludur.
+  if (cmd === "dm-mesaj" && !isConfiguredAuthorized(interaction.member)) {
+    return interaction.reply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setTitle("🔒 Yetkili Rolü Gerekli").setDescription("Bu komutu yalnızca .env içindeki YETKILI_ROL_ID rolüne sahip kullanıcılar kullanabilir.")], ephemeral: true });
+  }
 
   try {
     if (cmd === "ping") {
@@ -1459,6 +1495,7 @@ client.on("interactionCreate", async interaction => {
         const embed = new EmbedBuilder()
           .setColor(renk)
           .setTitle(baslik)
+          .setDescription(`✅ **${robloxIsim}** kullanıcısının Roblox rütbe işlemi tamamlandı.`)
           .addFields(
             { name: "👤 Roblox Kullanıcı", value: robloxIsim, inline: true },
             { name: "🏛️ Grup", value: grupAdi, inline: true },
@@ -1470,6 +1507,7 @@ client.on("interactionCreate", async interaction => {
           .setFooter({ text: "TSA - Turkish Special Army" })
           .setTimestamp();
 
+        await addRobloxAvatar(embed, userId);
         await sendLogMessage(interaction.guild, baslik, `${robloxIsim} kullanıcısının ${grupAdi} grubundaki rütbesi değiştirildi: ${hedefGrupRutbesi.name} → ${yeniRutbeAdi}`, renk, [
           { name: "Roblox Kullanıcı", value: robloxIsim, inline: true },
           { name: "Grup", value: grupAdi, inline: true },
@@ -1799,6 +1837,7 @@ client.on("interactionCreate", async interaction => {
         const embed = new EmbedBuilder()
           .setColor(RENK.ozel)
           .setTitle("🔄 Branş Rütbesi Değiştirildi")
+          .setDescription(`✅ **${robloxIsim}** kullanıcısının branş rütbesi güncellendi.`)
           .addFields(
             { name: "👤 Roblox Kullanıcı", value: robloxIsim, inline: true },
             { name: "🏛️ Grup", value: grupAdi, inline: true },
@@ -1810,6 +1849,7 @@ client.on("interactionCreate", async interaction => {
           .setFooter({ text: "TSA - Turkish Special Army" })
           .setTimestamp();
 
+        await addRobloxAvatar(embed, userId);
         await sendLogMessage(interaction.guild, "Branş Rütbesi Değiştirildi", `${robloxIsim} kullanıcısının ${grupAdi} grubundaki rütbesi değiştirildi: ${hedefGrupRutbesi.name} → ${hedefRol.name}`, RENK.ozel, [
           { name: "Roblox Kullanıcı", value: robloxIsim, inline: true },
           { name: "Grup", value: grupAdi, inline: true },
@@ -1830,7 +1870,8 @@ client.on("interactionCreate", async interaction => {
       const sebep = interaction.options.getString("sebep") || "Belirtilmedi";
       const member = interaction.guild.members.cache.get(user.id);
 
-      if (!member) return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Kullanıcı bulunamadı.")] });
+      const securityError = moderationTargetError(interaction, member);
+      if (securityError) return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setTitle("🛡️ Güvenlik Engeli").setDescription(`❌ ${securityError}`)] });
       if (!member.kickable) return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Bu kullanıcıyı atamıyorum. Rol hiyerarşisini kontrol et.")] });
 
       await member.kick(sebep);
@@ -1848,16 +1889,25 @@ client.on("interactionCreate", async interaction => {
       const sebep = interaction.options.getString("sebep") || "Belirtilmedi";
       const member = interaction.guild.members.cache.get(user.id);
 
-      if (!member) return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Kullanıcı bulunamadı.")] });
+      const securityError = moderationTargetError(interaction, member);
+      if (securityError) return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setTitle("🛡️ Güvenlik Engeli").setDescription(`❌ ${securityError}`)] });
       if (!member.bannable) return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setDescription("Bu kullanıcıyı yasaklayamıyorum. Rol hiyerarşisini kontrol et.")] });
 
+      const banDmSent = await sendBanDM(user, interaction.guild, interaction.user, sebep);
       await member.ban({ reason: sebep });
       await sendLogMessage(interaction.guild, "Kullanıcı Yasaklandı", `${user.tag} sunucudan yasaklandı.`, RENK.hata, [
         { name: "Kullanıcı", value: `<@${user.id}>`, inline: true },
         { name: "Sebep", value: sebep, inline: true },
+        { name: "Ban DM durumu", value: banDmSent ? "✅ Gönderildi" : "⚠️ Gönderilemedi / kapalı", inline: true },
         { name: "Yetkili", value: `<@${interaction.user.id}>`, inline: true }
       ]);
-      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setDescription(`✅ **${user.tag}** başarıyla sunucudan yasaklandı.\n\n**Sebep:** ${sebep}`)] });
+      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.basari).setTitle("✅ Kullanıcı Yasaklandı").setDescription(`**${user.tag}** başarıyla sunucudan yasaklandı.`).addFields(
+        { name: "🆔 Kullanıcı", value: `${user.tag} (${user.id})`, inline: false },
+        { name: "📝 Sebep", value: sebep, inline: false },
+        { name: "📩 DM Bildirimi", value: banDmSent ? "Ban sebebi ve işlem bilgileri DM ile iletildi." : "DM kapalı olduğu için bildirim iletilemedi.", inline: false },
+        { name: "👮 Yetkili", value: `<@${interaction.user.id}>`, inline: true },
+        { name: "🕒 Zaman", value: `<t:${Math.floor(Date.now()/1000)}:F>`, inline: true }
+      ).setThumbnail(user.displayAvatarURL({ dynamic: true, size: 256 }))] });
     }
 
     if (cmd === "unban") {
@@ -2148,13 +2198,21 @@ client.on("interactionCreate", async interaction => {
       const target = interaction.options.getUser("kullanici");
       const mesaj = interaction.options.getString("mesaj");
 
+      if (!mesaj || mesaj.length > config.SECURITY_MAX_DM_LENGTH) {
+        return interaction.editReply({ embeds: [new EmbedBuilder().setColor(RENK.hata).setTitle("📩 DM Gönderilemedi").setDescription(`Mesaj boş olamaz ve ${config.SECURITY_MAX_DM_LENGTH} karakteri geçemez.`)] });
+      }
       try {
         const dmEmbed = new EmbedBuilder()
           .setColor(RENK.ozel)
-          .setTitle("📩 Mesaj")
+          .setTitle("📩 TSA Yetkili Mesajı")
           .setDescription(mesaj)
+          .addFields(
+            { name: "🏛️ Sunucu", value: interaction.guild.name, inline: true },
+            { name: "👮 Gönderen", value: interaction.user.tag, inline: true },
+            { name: "🕒 Zaman", value: `<t:${Math.floor(Date.now()/1000)}:F>`, inline: false }
+          )
           .setTimestamp()
-          .setFooter({ text: `Gönderen: ${interaction.user.tag}` });
+          .setFooter({ text: "TSA Güvenlik Sistemi • Yetkili mesajı" });
 
         await target.send({ embeds: [dmEmbed] });
         await sendLogMessage(interaction.guild, "DM Gönderildi", `${interaction.user.tag} tarafından ${target.tag} kişisine DM gönderildi.`, RENK.ozel, [
